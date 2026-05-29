@@ -18,65 +18,57 @@ class wavl_tree
 {
 public:
     using node_type = Node;
-    using base_type = node_type;
     using key_from_value_type = KeyFromValue;
     using key_compare_type = Comparator;
     using key_type = typename key_from_value_type::result_type;
     using value_type = node_type::value_type;
-//private:
     static constexpr bool unique_keys() { return Unique; }
 
     struct insert_hints {
-        base_type* m_parent{nullptr};
+        node_type* m_parent{nullptr};
         bool m_inserted_left{false};
     };
 
     struct premodify_cache{};
     static constexpr bool requires_premodify_cache() { return false; }
 
-    base_type* m_root{nullptr};
+private:
+    node_type* m_root{nullptr};
     [[no_unique_address]] key_from_value_type m_key_from_value;
     [[no_unique_address]] key_compare_type m_comparator;
 
     size_t m_size{0};
 
-    wavl_tree(key_from_value_type key_from_value = {}, key_compare_type comparator = {}) : m_key_from_value{std::move(key_from_value)}, m_comparator(std::move(comparator)) {}
-    wavl_tree(const wavl_tree& rhs)  = default;
-    wavl_tree(wavl_tree&& rhs)
-    {
-        rhs.clear();
-    }
-
-    static base_type* tree_max(base_type* x) {
+    static node_type* tree_max(node_type* x) {
       while (x->right() != nullptr)
         x = x->right();
       return x;
     }
 
-    static const base_type* tree_max(const base_type* x) {
+    static const node_type* tree_max(const node_type* x) {
       while (x->right() != nullptr)
         x = x->right();
       return x;
     }
 
-    static bool tree_is_left_child(base_type* x)
+    static bool tree_is_left_child(node_type* x)
     {
         return x == x->parent()->left();
     }
 
-    static bool tree_is_left_child(const base_type* x)
+    static bool tree_is_left_child(const node_type* x)
     {
         return x == x->parent()->left();
     }
 
-    static base_type* tree_min(base_type* x)
+    static node_type* tree_min(node_type* x)
     {
         while (x->left() != nullptr)
             x = x->left();
         return x;
     }
 
-    static base_type* tree_next(base_type* x)
+    static node_type* tree_next(node_type* x)
     {
         if (x->right() != nullptr)
             return tree_min(x->right());
@@ -85,7 +77,7 @@ public:
         return x->parent();
     }
 
-    static const base_type* tree_next(const base_type* x)
+    static const node_type* tree_next(const node_type* x)
     {
         if (x->right() != nullptr)
             return tree_min(x->right());
@@ -94,7 +86,7 @@ public:
         return x->parent();
     }
 
-    static base_type* tree_prev(base_type* x)
+    static node_type* tree_prev(node_type* x)
     {
       if (x->left() != nullptr)
         return tree_max(x->left());
@@ -103,7 +95,7 @@ public:
       return x->parent();
     }
 
-    static const base_type* tree_prev(const base_type* x)
+    static const node_type* tree_prev(const node_type* x)
     {
       if (x->left() != nullptr)
         return tree_max(x->left());
@@ -112,7 +104,7 @@ public:
       return x->parent();
     }
 
-    base_type *rotate(base_type *x, int d)
+    node_type *rotate(node_type *x, int d)
     {
         auto pivot = x->ch(d);
         x->set_ch(d, pivot->ch(d^1));
@@ -125,9 +117,9 @@ public:
         return pivot;
     }
 
-    void insert_rebalance(base_type *p)
+    void insert_rebalance(node_type *p)
     {
-        base_type *x;
+        node_type *x;
         bool par_x, par_y, par_p;
         int d;
         for (;;) {
@@ -149,7 +141,7 @@ public:
         if (par_x != par_p || par_x != par_y)
             return;
 
-        base_type *y = x->ch(d^1);
+        node_type *y = x->ch(d^1);
         if (y && y->rp() != par_x) {
             rotate(x, d^1);
             rotate(p, d);
@@ -162,7 +154,7 @@ public:
         p->flip();
     }
 
-    static bool is_22_node(base_type *n)
+    static bool is_22_node(node_type *n)
     {
         if (n->rp()) {
             return (!n->ch(0) || n->ch(0)->rp()) && (!n->ch(1) || n->ch(1)->rp());
@@ -171,11 +163,11 @@ public:
         }
     }
 
-    void tree_remove(base_type *n) {
-        base_type *y = n;
+    void tree_remove(node_type *n) {
+        node_type *y = n;
         if (n->ch(0) && n->ch(1))
             for (y = n->ch(1); y->ch(0); y = y->ch(0));
-        base_type *p = y->parent(), *x = y->ch(0) ? y->ch(0) : y->ch(1);
+        node_type *p = y->parent(), *x = y->ch(0) ? y->ch(0) : y->ch(1);
         bool was_2 = p && y->rp() == p->rp();
 
         if (p) p->set_ch(p->ch(1) == y, x); else m_root = x;
@@ -212,7 +204,7 @@ public:
                     y->flip();
                     p->flip();
                 } else {
-                    base_type* w = y->ch(d^1);
+                    node_type* w = y->ch(d^1);
                     if ((w ? w->rp() : true) != y->rp()) {
                         rotate(p, d^1);
                         y->flip();
@@ -230,7 +222,7 @@ public:
         }
     }
 #ifdef DEBUG
-    static int compute_rank(base_type* n)
+    static int compute_rank(node_type* n)
     {
         if (!n) return -1;
         int lr = compute_rank(n->left()), rr = compute_rank(n->right());
@@ -240,26 +232,34 @@ public:
         assert(rank_l == rank_r);
         return rank_l;
     }
-    static bool verify_tree(base_type* root) {
+    static bool verify_tree(node_type* root) {
         int rank = compute_rank(root);
         assert(rank >= -1);
         return true;
     }
 #else
-    static bool verify_tree(base_type*) { return true; }
+    static bool verify_tree(node_type*) { return true; }
 #endif
 
-    void remove_node(base_type* base)
+public:
+    wavl_tree(key_from_value_type key_from_value = {}, key_compare_type comparator = {}) : m_key_from_value{std::move(key_from_value)}, m_comparator(std::move(comparator)) {}
+    wavl_tree(const wavl_tree& rhs)  = default;
+    wavl_tree(wavl_tree&& rhs)
     {
-        tree_remove(base);
+        rhs.clear();
+    }
+
+    void remove_node(node_type* node)
+    {
+        tree_remove(node);
         verify_tree(m_root);
         m_size--;
     }
 
-    void insert_node_direct(base_type* base)
+    void insert_node_direct(node_type* node)
     {
-        base_type* curr = m_root;
-        const auto& key = m_key_from_value(base->value());
+        node_type* curr = m_root;
+        const auto& key = m_key_from_value(node->value());
 
         insert_hints hints;
         while (curr != nullptr) {
@@ -273,14 +273,14 @@ public:
                 hints.m_inserted_left = false;
             }
         }
-        insert_node(base, hints);
+        insert_node(node, hints);
     }
 
-    base_type* preinsert_node(const base_type* base, insert_hints& hints)
+    node_type* preinsert_node(const node_type* node, insert_hints& hints)
     {
-        base_type* parent = nullptr;
-        base_type* curr = m_root;
-        const auto& key = m_key_from_value(base->value());
+        node_type* parent = nullptr;
+        node_type* curr = m_root;
+        const auto& key = m_key_from_value(node->value());
 
         bool inserted_left = false;
         while (curr != nullptr) {
@@ -311,62 +311,60 @@ public:
         return nullptr;
     }
 
-    void insert_node(base_type* base, const insert_hints& hints)
+    void insert_node(node_type* node, const insert_hints& hints)
     {
-        base_type* parent = hints.m_parent;
+        node_type* parent = hints.m_parent;
 
-        base->set_left(nullptr);
-        base->set_right(nullptr);
-        base->set_parent(nullptr);
-        base->clr_flags();
+        node->set_left(nullptr);
+        node->set_right(nullptr);
+        node->set_parent(nullptr);
+        node->clr_flags();
 
         if(parent) {
             bool was_leaf;
             if (hints.m_inserted_left) {
-                parent->set_left(base);
+                parent->set_left(node);
                 was_leaf = !parent->right();
             } else {
-                parent->set_right(base);
+                parent->set_right(node);
                 was_leaf = !parent->left();
             }
-            base->set_parent(parent);
+            node->set_parent(parent);
             if (was_leaf) {
                 insert_rebalance(parent);
             }
         } else {
-            m_root = base;
+            m_root = node;
         }
         m_size++;
         verify_tree(m_root);
     }
 
-    bool erase_if_modified(base_type* base, const premodify_cache&)
+    bool erase_if_modified(node_type* node, const premodify_cache&)
     {
-        base_type* next_ptr = nullptr;
-        base_type* prev_ptr = nullptr;
+        node_type* next_ptr = nullptr;
+        node_type* prev_ptr = nullptr;
 
-        if (base != tree_min(m_root))
-            prev_ptr = tree_prev(base);
-        if (base != tree_max(m_root))
-            next_ptr = tree_next(base);
+        if (node != tree_min(m_root))
+            prev_ptr = tree_prev(node);
+        if (node != tree_max(m_root))
+            next_ptr = tree_next(node);
 
-        const auto& key = m_key_from_value(base->value());
+        const auto& key = m_key_from_value(node->value());
 
         bool needs_resort = ((next_ptr != nullptr && m_comparator(m_key_from_value(next_ptr->value()), key)) ||
                              (prev_ptr != nullptr && m_comparator(key, m_key_from_value(prev_ptr->value()))));
         if (needs_resort) {
 
-            remove_node(base);
-            base->set_parent(nullptr);
-            base->set_left(nullptr);
-            base->set_right(nullptr);
-            base->clr_flags();
+            remove_node(node);
+            node->set_parent(nullptr);
+            node->set_left(nullptr);
+            node->set_right(nullptr);
+            node->clr_flags();
             return true;
         }
         return false;
     }
-
-public:
 
     void clear()
     {
@@ -386,9 +384,9 @@ public:
    
     class iterator
     {
-        const base_type* m_node{};
-        const base_type* m_root{};
-        iterator(const base_type* node, const base_type* root) : m_node(node), m_root(root){}
+        const node_type* m_node{};
+        const node_type* m_root{};
+        iterator(const node_type* node, const node_type* root) : m_node(node), m_root(root){}
         friend wavl_tree;
     public:
         typedef const wavl_tree::value_type value_type;
@@ -402,7 +400,7 @@ public:
         pointer operator->() const { return &m_node->value(); }
         iterator& operator++()
         {
-            const base_type* next = tree_next(m_node);
+            const node_type* next = tree_next(m_node);
             if (next) {
                 m_node = next;
             } else {
@@ -413,14 +411,14 @@ public:
         iterator& operator--()
         {
             if (m_node) {
-                const base_type* prev = tree_prev(m_node);
+                const node_type* prev = tree_prev(m_node);
                 if (prev) {
                     m_node = prev;
                 } else {
                     m_node = nullptr;
                 }
             } else {
-                base_type* root = m_root->left();
+                node_type* root = m_root->left();
                 assert(root);
                 m_node = tree_max(root);
             }
@@ -445,7 +443,7 @@ public:
 
     iterator begin() const
     {
-        base_type* root = m_root;
+        node_type* root = m_root;
         if (root == nullptr)
             return end();
         return make_iterator(tree_min(m_root));
@@ -456,21 +454,11 @@ public:
         return make_iterator(nullptr);
     }
 
-    const_iterator make_iterator(const base_type* node) const
-    {
-        return const_iterator(node, m_root);
-    }
-    const base_type* node_from_iterator(const_iterator it) const
-    {
-        return it.m_node;
-    }
-
-
     template<typename CompatibleKey>
     iterator lower_bound(const CompatibleKey& key) const
     {
-        base_type* curr = m_root;
-        base_type* ret = nullptr;
+        node_type* curr = m_root;
+        node_type* ret = nullptr;
         while (curr != nullptr) {
             const auto& curr_key = m_key_from_value(curr->value());
             if (!m_comparator(curr_key, key)) {
@@ -490,8 +478,8 @@ public:
     template<typename CompatibleKey>
     iterator upper_bound(const CompatibleKey& key) const
     {
-        base_type* curr = m_root;
-        base_type* ret = nullptr;
+        node_type* curr = m_root;
+        node_type* ret = nullptr;
         while (curr != nullptr) {
             const auto& curr_key = m_key_from_value(curr->value());
             if (m_comparator(key, curr_key)) {
@@ -528,7 +516,7 @@ public:
     template<typename CompatibleKey>
     iterator find(const CompatibleKey& key) const
     {
-        base_type* curr = m_root;
+        node_type* curr = m_root;
         while (curr != nullptr) {
             const auto& curr_key = m_key_from_value(curr->value());
             if (m_comparator(key, curr_key)) {
@@ -544,7 +532,7 @@ public:
 
     iterator erase(iterator it)
     {
-        base_type* node = const_cast<base_type*>(it.m_node);
+        node_type* node = const_cast<node_type*>(it.m_node);
         iterator next = it++;
         remove_node(node);
         return next;
@@ -568,6 +556,19 @@ public:
         }
         return ret;
     }
+
+protected:
+
+    const_iterator make_iterator(const node_type* node) const
+    {
+        return const_iterator(node, m_root);
+    }
+    const node_type* node_from_iterator(const_iterator it) const
+    {
+        return it.m_node;
+    }
+
+
 };
 
 } // namespace tmi

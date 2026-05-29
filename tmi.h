@@ -187,11 +187,11 @@ private:
     }
 
     template <typename IndexedNode>
-    std::pair<IndexedNode*, bool> do_insert(IndexedNode* base)
+    std::pair<IndexedNode*, bool> do_insert(IndexedNode* indexed)
     {
         indices_hints_tuple hints;
         
-        node_type* node = node_cast(base);
+        node_type* node = node_cast(indexed);
         node_type* conflict = nullptr;
         get_foreach_index([&conflict]<int I>(const indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, auto& indexed_hints) TMI_CPP23_STATIC {
             auto* ret = instance.preinsert_node(indexed_node, indexed_hints);
@@ -219,7 +219,7 @@ private:
         }
 
         m_size++;
-        return {base, true};
+        return {indexed, true};
     }
 
     void do_erase_cleanup(node_type* node)
@@ -283,9 +283,9 @@ private:
     }
 
     template <typename IndexedNode>
-    void do_erase(IndexedNode* base)
+    void do_erase(IndexedNode* indexed)
     {
-        node_type* node = node_cast(base);
+        node_type* node = node_cast(indexed);
         foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance) TMI_CPP23_STATIC {
             instance.remove_node(indexed_node);
         }, node, m_index_instances);
@@ -294,9 +294,9 @@ private:
     }
 
     template <typename IndexedNode, typename Callable>
-    bool do_modify(IndexedNode* base, Callable&& func)
+    bool do_modify(IndexedNode* indexed, Callable&& func)
     {
-        node_type* node = node_cast(base);
+        node_type* node = node_cast(indexed);
         indices_premodify_cache_tuple index_cache;
 
         foreach_index([]<int I>(const indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, auto& cache) TMI_CPP23_STATIC {
@@ -354,17 +354,17 @@ private:
     }
 
     template <typename IndexedNode>
-    node_handle<IndexedNode> do_extract(IndexedNode* base)
+    node_handle<IndexedNode> do_extract(IndexedNode* indexed)
     {
-        if(!base) {
+        if(!indexed) {
             return {};
         }
-        node_type* node = node_cast(base);
+        node_type* node = node_cast(indexed);
         foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance) TMI_CPP23_STATIC {
              instance.remove_node(indexed_node);
          }, node, m_index_instances);
         do_erase_cleanup(node);
-        return {m_alloc, base};
+        return {m_alloc, indexed};
     }
 
     template <typename IndexedNode>

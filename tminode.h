@@ -229,14 +229,14 @@ public:
         return static_cast<tmi_indexed_comparator_node*>(std::get<I>(tminode<T, Indices>::m_data).m_right);
     }
 
-    void set_right(tmi_indexed_comparator_node* base)
+    void set_right(tmi_indexed_comparator_node* node)
     {
-        std::get<I>(tminode<T, Indices>::m_data).m_right = base;
+        std::get<I>(tminode<T, Indices>::m_data).m_right = node;
     }
 
-    void set_left(tmi_indexed_comparator_node* base)
+    void set_left(tmi_indexed_comparator_node* node)
     {
-        std::get<I>(tminode<T, Indices>::m_data).m_left = base;
+        std::get<I>(tminode<T, Indices>::m_data).m_left = node;
     }
 
     void set_ch(int d, tmi_indexed_comparator_node* rhs)
