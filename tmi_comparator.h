@@ -65,33 +65,34 @@ private:
     tmi_comparator(tree_type&&) = delete;
     tmi_comparator& operator=(const tree_type&) = delete;
     tmi_comparator& operator=(tree_type&&) = delete;
-    void remove_node(node_type* node)
+
+    void tmi_remove_node(node_type* node)
     {
         iterator it = tree_type::make_iterator(node);
         tree_type::erase(it);
     }
 
-    void insert_node_direct(node_type* node)
+    void tmi_insert_node_direct(node_type* node)
     {
         tree_type::insert_node_direct(node);
     }
 
-    node_type* preinsert_node(const node_type* node, insert_hints& hints)
+    node_type* tmi_preinsert_node(const node_type* node, insert_hints& hints)
     {
         return tree_type::preinsert_node(node, hints);
     }
 
-    void insert_node(node_type* node, const insert_hints& hints)
+    void tmi_insert_node(node_type* node, const insert_hints& hints)
     {
         tree_type::insert_node(node, hints);
     }
 
-    bool erase_if_modified(node_type* node, const premodify_cache& cache)
+    bool tmi_erase_if_modified(node_type* node, const premodify_cache& cache)
     {
         return tree_type::erase_if_modified(node, cache);
     }
 
-    void do_clear()
+    void tmi_clear()
     {
         tree_type::clear();
     }

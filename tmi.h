@@ -194,7 +194,7 @@ private:
         node_type* node = node_cast(indexed);
         node_type* conflict = nullptr;
         get_foreach_index([&conflict]<int I>(const indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, auto& indexed_hints) TMI_CPP23_STATIC {
-            auto* ret = instance.preinsert_node(indexed_node, indexed_hints);
+            auto* ret = instance.tmi_preinsert_node(indexed_node, indexed_hints);
             if (ret) {
                 conflict = node_cast(ret);
                 return false;
@@ -206,7 +206,7 @@ private:
             return {indexed_node_cast<IndexedNode>(conflict), false};
         }
         foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, const auto& indexed_hints) TMI_CPP23_STATIC {
-            instance.insert_node(indexed_node, indexed_hints);
+            instance.tmi_insert_node(indexed_node, indexed_hints);
         }, node, m_index_instances,  hints);
 
         node->link(m_end);
@@ -287,7 +287,7 @@ private:
     {
         node_type* node = node_cast(indexed);
         foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance) TMI_CPP23_STATIC {
-            instance.remove_node(indexed_node);
+            instance.tmi_remove_node(indexed_node);
         }, node, m_index_instances);
         do_erase_cleanup(node);
         do_destroy_node(node);
@@ -301,7 +301,7 @@ private:
 
         foreach_index([]<int I>(const indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, auto& cache) TMI_CPP23_STATIC {
             if constexpr (nth_index_t<I>::requires_premodify_cache()) {
-                instance.create_premodify_cache(indexed_node, cache);
+                instance.tmi_create_premodify_cache(indexed_node, cache);
             }
         }, node, m_index_instances,  index_cache);
 
@@ -311,25 +311,25 @@ private:
         std::array<bool, num_indices> indicies_to_modify{};
 
         foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, auto& modify, const auto& cache) TMI_CPP23_STATIC {
-            modify = instance.erase_if_modified(indexed_node, cache);
+            modify = instance.tmi_erase_if_modified(indexed_node, cache);
          }, node, m_index_instances,  indicies_to_modify, index_cache);
 
 
         indices_hints_tuple index_hints;
 
         bool insertable = get_foreach_index([]<int I>(const indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, const auto& modify, auto& indexed_hints) TMI_CPP23_STATIC {
-            if (modify) return instance.preinsert_node(indexed_node, indexed_hints) == nullptr;
+            if (modify) return instance.tmi_preinsert_node(indexed_node, indexed_hints) == nullptr;
             return true;
         }, node, m_index_instances,  indicies_to_modify, index_hints);
 
         if (insertable) {
             foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, const auto& modify, const auto& indexed_hints) TMI_CPP23_STATIC {
-                if (modify) instance.insert_node(indexed_node, indexed_hints);
+                if (modify) instance.tmi_insert_node(indexed_node, indexed_hints);
             }, node, m_index_instances,  indicies_to_modify, index_hints);
             return true;
         } else {
             foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, const auto& modify) TMI_CPP23_STATIC {
-                if (!modify) instance.remove_node(indexed_node);
+                if (!modify) instance.tmi_remove_node(indexed_node);
             }, node, m_index_instances,  indicies_to_modify);
             do_erase_cleanup(node);
             do_destroy_node(node);
@@ -340,7 +340,7 @@ private:
     void do_clear()
     {
         foreach_index([]<int I>(nth_index_t<I>& instance) TMI_CPP23_STATIC {
-            instance.do_clear();
+            instance.tmi_clear();
          }, nullptr, m_index_instances);
 
         auto* node = m_begin;
@@ -361,7 +361,7 @@ private:
         }
         node_type* node = node_cast(indexed);
         foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance) TMI_CPP23_STATIC {
-             instance.remove_node(indexed_node);
+             instance.tmi_remove_node(indexed_node);
          }, node, m_index_instances);
         do_erase_cleanup(node);
         return {m_alloc, indexed};
@@ -482,7 +482,7 @@ public:
         to_node = m_begin;
         while(to_node) {
             foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance) TMI_CPP23_STATIC {
-                instance.insert_node_direct(indexed_node);
+                instance.tmi_insert_node_direct(indexed_node);
             }, to_node, m_index_instances);
             to_node = to_node->next();
             m_size++;
