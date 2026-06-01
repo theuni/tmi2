@@ -244,11 +244,8 @@ public:
 
     hash_tree(const allocator_type& alloc, size_t bucket_count, key_from_value_type key_from_value ,hasher_type hasher, key_equal_type key_equal) : m_buckets(alloc, bucket_count), m_key_from_value(key_from_value), m_hasher(hasher), m_pred(key_equal){}
 
-    hash_tree(const hash_tree& rhs) : m_buckets(rhs.m_buckets.size(), nullptr), m_key_from_value(rhs.m_key_from_value), m_hasher(rhs.m_hasher), m_pred(rhs.m_pred){}
-    hash_tree(hash_tree&& rhs) : m_buckets(std::move(rhs.m_buckets)), m_key_from_value(std::move(rhs.m_key_from_value)), m_hasher(std::move(rhs.m_hasher)), m_pred(std::move(rhs.m_pred))
-    {
-        rhs.m_size = 0;
-    }
+    hash_tree(const hash_tree& rhs) = delete;
+    hash_tree(hash_tree&& rhs) = default;
 
     void remove_node(const node_type* node)
     {

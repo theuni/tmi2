@@ -217,7 +217,7 @@ public:
         return {tree_type::make_iterator(new_node), true, {}};
     }
 
-    const_iterator make_iterator(const node_type* node)
+    const_iterator make_iterator(const node_type* node) const
     {
         return tree_type::make_iterator(node);
     }

@@ -524,7 +524,7 @@ public:
         static projected_iterator_type convert(const indices_tuple& index_instances, IteratorType it)
         {
             auto* indexed_node = std::get<from_iterator_index>(index_instances).node_from_iterator(it);
-            node_type* node = node_cast(indexed_node);
+            auto* node = node_cast(indexed_node);
             return std::get<I>(index_instances).make_iterator(indexed_node_cast<indexed_node_type<I>>(node));
         }
     };

@@ -243,11 +243,8 @@ private:
 
 public:
     wavl_tree(key_from_value_type key_from_value = {}, key_compare_type comparator = {}) : m_key_from_value{std::move(key_from_value)}, m_comparator(std::move(comparator)) {}
-    wavl_tree(const wavl_tree& rhs)  = default;
-    wavl_tree(wavl_tree&& rhs)
-    {
-        rhs.clear();
-    }
+    wavl_tree(const wavl_tree& rhs)  = delete;
+    wavl_tree(wavl_tree&& rhs) = default;
 
     void remove_node(node_type* node)
     {
@@ -418,9 +415,8 @@ public:
                     m_node = nullptr;
                 }
             } else {
-                node_type* root = m_root->left();
-                assert(root);
-                m_node = tree_max(root);
+                assert(m_root);
+                m_node = tree_max(m_root);
             }
             return *this;
         }
