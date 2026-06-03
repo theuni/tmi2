@@ -154,28 +154,29 @@ template <typename T, typename Indices, int I>
 class tmi_indexed_hash_node : private tminode<T, Indices>
 {
     tmi_indexed_hash_node() = delete;
+    using tminode<T, Indices>::m_data;
 public:
     using typename tminode<T, Indices>::value_type;
     using tminode<T, Indices>::value;
 
     tmi_indexed_hash_node* next_hash() const
     {
-        return static_cast<tmi_indexed_hash_node*>(std::get<I>(tminode<T, Indices>::m_data).m_nexthash);
+        return static_cast<tmi_indexed_hash_node*>(std::get<I>(m_data).m_nexthash);
     }
 
     size_t hash() const
     {
-        return std::get<I>(tminode<T, Indices>::m_data).m_hash;
+        return std::get<I>(m_data).m_hash;
     }
 
     void set_hash(size_t hash)
     {
-        std::get<I>(tminode<T, Indices>::m_data).m_hash = hash;
+        std::get<I>(m_data).m_hash = hash;
     }
 
     void set_next_hashptr(tmi_indexed_hash_node* rhs)
     {
-        std::get<I>(tminode<T, Indices>::m_data).m_nexthash = rhs;
+        std::get<I>(m_data).m_nexthash = rhs;
     }
 };
 
@@ -183,6 +184,7 @@ template <typename T, typename Indices, int I>
 class tmi_indexed_comparator_node : private tminode<T, Indices>
 {
     tmi_indexed_comparator_node() = delete;
+    using tminode<T, Indices>::m_data;
 public:
 
     using typename tminode<T, Indices>::value_type;
@@ -190,84 +192,52 @@ public:
 
     tmi_indexed_comparator_node* parent() const
     {
-        return reinterpret_cast<tmi_indexed_comparator_node*>(std::get<I>(tminode<T, Indices>::m_data).par_and_flg & ~1UL);
+        return reinterpret_cast<tmi_indexed_comparator_node*>(std::get<I>(m_data).par_and_flg & ~1UL);
     }
 
     void set_parent(tmi_indexed_comparator_node *p)
     {
-        auto& par_and_flg = std::get<I>(tminode<T, Indices>::m_data).par_and_flg;
+        auto& par_and_flg = std::get<I>(m_data).par_and_flg;
         par_and_flg = (par_and_flg & 1UL) | reinterpret_cast<uintptr_t>(p);
     }
 
-    uintptr_t flags() const
+    void clone(tmi_indexed_comparator_node* node)
     {
-        return std::get<I>(tminode<T, Indices>::m_data).par_and_flg & 1UL;
+        std::get<I>(m_data) = std::get<I>(node->m_data);
     }
 
     bool rp() const
     {
-        return std::get<I>(tminode<T, Indices>::m_data).par_and_flg & 1UL;
+        return std::get<I>(m_data).par_and_flg & 1UL;
     }
 
     void flip()
     {
-        std::get<I>(tminode<T, Indices>::m_data).par_and_flg ^= 1UL;
-    }
-
-    void clr_flags()
-    {
-        std::get<I>(tminode<T, Indices>::m_data).par_and_flg &= ~1UL;
+        std::get<I>(m_data).par_and_flg ^= 1UL;
     }
 
     tmi_indexed_comparator_node* left() const
     {
-        return static_cast<tmi_indexed_comparator_node*>(std::get<I>(tminode<T, Indices>::m_data).m_left);
+        return static_cast<tmi_indexed_comparator_node*>(std::get<I>(m_data).m_left);
     }
 
     tmi_indexed_comparator_node* right() const
     {
-        return static_cast<tmi_indexed_comparator_node*>(std::get<I>(tminode<T, Indices>::m_data).m_right);
+        return static_cast<tmi_indexed_comparator_node*>(std::get<I>(m_data).m_right);
     }
 
     void set_right(tmi_indexed_comparator_node* node)
     {
-        std::get<I>(tminode<T, Indices>::m_data).m_right = node;
+        std::get<I>(m_data).m_right = node;
     }
 
     void set_left(tmi_indexed_comparator_node* node)
     {
-        std::get<I>(tminode<T, Indices>::m_data).m_left = node;
+        std::get<I>(m_data).m_left = node;
     }
-
-    void set_ch(int d, tmi_indexed_comparator_node* rhs)
+    void reset()
     {
-        if (d) {
-            std::get<I>(tminode<T, Indices>::m_data).m_right = rhs;
-        } else {
-            std::get<I>(tminode<T, Indices>::m_data).m_left = rhs;
-        }
-    }
-
-    tmi_indexed_comparator_node* ch(int d)
-    {
-        return d ? static_cast<tmi_indexed_comparator_node*>(std::get<I>(tminode<T, Indices>::m_data).m_right)
-          :  static_cast<tmi_indexed_comparator_node*>(std::get<I>(tminode<T, Indices>::m_data).m_left);
-    }
-
-    const tmi_indexed_comparator_node* ch(int d) const
-    {
-        return d ? static_cast<tmi_indexed_comparator_node*>(std::get<I>(tminode<T, Indices>::m_data).m_right)
-          :  static_cast<tmi_indexed_comparator_node*>(std::get<I>(tminode<T, Indices>::m_data).m_left);
-    }
-
-    uintptr_t par_and_flg() const
-    {
-        return std::get<I>(tminode<T, Indices>::m_data).par_and_flg;
-    }
-
-    void set_par_and_flg(uintptr_t rhs)
-    {
-        std::get<I>(tminode<T, Indices>::m_data).par_and_flg = rhs;
+        std::get<I>(m_data) = {};
     }
 };
 

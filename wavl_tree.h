@@ -103,17 +103,47 @@ private:
       return x->parent();
     }
 
-    node_type *rotate(node_type *x, int d)
+    static node_type* child(node_type *x, int d)
     {
-        auto pivot = x->ch(d);
-        x->set_ch(d, pivot->ch(d^1));
-        if (x->ch(d)) x->ch(d)->set_parent(x);
+        return d ? x->right() : x->left();
+    }
+
+    static void set_child(node_type* x, int d, node_type* y)
+    {
+        d ? x->set_right(y) : x->set_left(y);
+    }
+
+    node_type *rotate_right(node_type *x)
+    {
+        auto pivot = x->right();
+        x->set_right(pivot->left());
+        if (x->right()) x->right()->set_parent(x);
         pivot->set_parent(x->parent());
         if (!x->parent()) m_root = pivot;
-        else x->parent()->set_ch(x != x->parent()->ch(0), pivot);
-        pivot->set_ch(d^1, x);
+        else if (x != x->parent()->left()) x->parent()->set_right(pivot);
+        else x->parent()->set_left(pivot);
+        pivot->set_left(x);
         x->set_parent(pivot);
         return pivot;
+    }
+
+    node_type *rotate_left(node_type *x)
+    {
+        auto pivot = x->left();
+        x->set_left(pivot->right());
+        if (x->left()) x->left()->set_parent(x);
+        pivot->set_parent(x->parent());
+        if (!x->parent()) m_root = pivot;
+        else if (x != x->parent()->left()) x->parent()->set_right(pivot);
+        else x->parent()->set_left(pivot);
+        pivot->set_right(x);
+        x->set_parent(pivot);
+        return pivot;
+    }
+
+    node_type *rotate(node_type *x, int d)
+    {
+        return d ? rotate_right(x) : rotate_left(x);
     }
 
     void insert_rebalance(node_type *p)
@@ -127,9 +157,9 @@ private:
             x = p;
             p = p->parent();
             if (!p) return;
-            d = p->ch(1) == x;
+            d = p->right() == x;
             par_x = x->rp();
-            par_y = !p->ch(d^1) || p->ch(d^1)->rp();
+            par_y = !child(p, d^1) || child(p, d^1)->rp();
             par_p = p->rp();
             // Continue if p is a 0,1 node.
             if (!(par_x == par_p && par_x != par_y))
@@ -140,7 +170,7 @@ private:
         if (par_x != par_p || par_x != par_y)
             return;
 
-        node_type *y = x->ch(d^1);
+        node_type *y = child(x, d^1);
         if (y && y->rp() != par_x) {
             rotate(x, d^1);
             rotate(p, d);
@@ -156,46 +186,45 @@ private:
     static bool is_22_node(node_type *n)
     {
         if (n->rp()) {
-            return (!n->ch(0) || n->ch(0)->rp()) && (!n->ch(1) || n->ch(1)->rp());
+            return (!n->left() || n->left()->rp()) && (!n->right() || n->right()->rp());
         } else {
-            return n->ch(0) && !n->ch(0)->rp() && n->ch(1) && !n->ch(1)->rp();
+            return n->left() && !n->left()->rp() && n->right() && !n->right()->rp();
         }
     }
 
     void tree_remove(node_type *n) {
         node_type *y = n;
-        if (n->ch(0) && n->ch(1))
-            for (y = n->ch(1); y->ch(0); y = y->ch(0));
-        node_type *p = y->parent(), *x = y->ch(0) ? y->ch(0) : y->ch(1);
+        if (n->left() && n->right())
+            for (y = n->right(); y->left(); y = y->left());
+        node_type *p = y->parent(), *x = y->left() ? y->left() : y->right();
         bool was_2 = p && y->rp() == p->rp();
 
-        if (p) p->set_ch(p->ch(1) == y, x); else m_root = x;
+        if (p) set_child(p, p->right() == y, x); else m_root = x;
         if (x) x->set_parent(p);
 
         if (y != n) {
-            y->set_ch(0, n->ch(0)); y->set_ch(1, n->ch(1));
-            y->set_par_and_flg(n->par_and_flg());
+            y->clone(n);
             if (n->parent()) {
-                int child = n->parent()->ch(1) == n;
-                n->parent()->set_ch(child, y);
+                int child = n->parent()->right() == n;
+                set_child(n->parent(), child, y);
             } else {
                 m_root = y;
             }
-            y->ch(0)->set_parent(y);
-            if (y->ch(1)) y->ch(1)->set_parent(y);
+            y->left()->set_parent(y);
+            if (y->right()) y->right()->set_parent(y);
             if (p == n) p = y;
         }
 
         if (p) {
-            if (!was_2 && !x && !p->ch(0) && !p->ch(1) && p->rp()) {
+            if (!was_2 && !x && !p->left() && !p->right() && p->rp()) {
                 was_2 = p->parent() && p->rp() == p->parent()->rp();
                 p->flip();
                 x = p;
                 p = p->parent();
             }
             for (; p && was_2; x = p, p = p->parent()) {
-                int d = p->ch(1) == x;
-                y = p->ch(d^1);
+                int d = p->right() == x;
+                y = child(p, d^1);
                 bool creates_3 = p->parent() && p->rp() == p->parent()->rp();
                 if (y->rp() == p->rp()) {
                     p->flip();
@@ -203,12 +232,12 @@ private:
                     y->flip();
                     p->flip();
                 } else {
-                    node_type* w = y->ch(d^1);
+                    node_type* w = child(y, d^1);
                     if ((w ? w->rp() : true) != y->rp()) {
                         rotate(p, d^1);
                         y->flip();
                         p->flip();
-                        if (!p->ch(0) && !p->ch(1)) p->flip();
+                        if (!p->left() && !p->right()) p->flip();
                     } else {
                         rotate(y, d);
                         rotate(p, d^1);
@@ -311,10 +340,7 @@ public:
     {
         node_type* parent = hints.m_parent;
 
-        node->set_left(nullptr);
-        node->set_right(nullptr);
-        node->set_parent(nullptr);
-        node->clr_flags();
+        node->reset();
 
         if(parent) {
             bool was_leaf;
@@ -353,10 +379,7 @@ public:
         if (needs_resort) {
 
             remove_node(node);
-            node->set_parent(nullptr);
-            node->set_left(nullptr);
-            node->set_right(nullptr);
-            node->clr_flags();
+            node->reset();
             return true;
         }
         return false;
