@@ -86,7 +86,7 @@ private:
         return tree_type::preinsert_node(node, hints);
     }
 
-    void tmi_create_premodify_cache(const node_type* node, premodify_cache& cache)
+    void tmi_create_premodify_cache(const node_type* node, premodify_cache& cache) const
     {
         tree_type::create_premodify_cache(node, cache);
     }
