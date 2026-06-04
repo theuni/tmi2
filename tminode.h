@@ -159,7 +159,12 @@ public:
     using typename tminode<T, Indices>::value_type;
     using tminode<T, Indices>::value;
 
-    tmi_indexed_hash_node* next_hash() const
+    const tmi_indexed_hash_node* next_hash() const
+    {
+        return static_cast<const tmi_indexed_hash_node*>(std::get<I>(m_data).m_nexthash);
+    }
+
+    tmi_indexed_hash_node* next_hash()
     {
         return static_cast<tmi_indexed_hash_node*>(std::get<I>(m_data).m_nexthash);
     }
@@ -174,9 +179,9 @@ public:
         std::get<I>(m_data).m_hash = hash;
     }
 
-    void set_next_hashptr(tmi_indexed_hash_node* rhs)
+    void set_next_hashptr(const tmi_indexed_hash_node* rhs)
     {
-        std::get<I>(m_data).m_nexthash = rhs;
+        std::get<I>(m_data).m_nexthash = const_cast<tmi_indexed_hash_node*>(rhs);
     }
 };
 

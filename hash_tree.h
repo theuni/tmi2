@@ -230,12 +230,12 @@ public:
 
     struct insert_hints {
         size_t m_hash{0};
-        node_type** m_bucket{nullptr};
+        size_t m_index{0};
     };
 
     struct premodify_cache {
-        node_type** m_bucket{nullptr};
-        node_type* m_prev{nullptr};
+        size_t m_index;
+        const node_type* m_prev{nullptr};
     };
 
     static constexpr bool requires_premodify_cache() { return true; }
@@ -292,6 +292,7 @@ public:
         First rehash if necessary, using first_hashes_resize as the initial
         size if empty. Then find calculate the bucket and insert there.
     */
+    //TODO: instead, add a "m_needs_rehash" to hints to keep this const
     node_type* preinsert_node(const node_type* node, insert_hints& hints)
     {
         size_t bucket_count = m_buckets.size();
@@ -322,30 +323,28 @@ public:
                 curr = curr->next_hash();
             }
         }
-        hints.m_bucket = &bucket;
+        hints.m_index = index;
         hints.m_hash = hash;
         return nullptr;
     }
 
-    void create_premodify_cache(const node_type* node, premodify_cache& cache)
+    void create_premodify_cache(const node_type* node, premodify_cache& cache) const
     {
         const size_t bucket_count = m_buckets.size();
         if (!bucket_count) {
             return;
         }
         const size_t index = node->hash() % bucket_count;
-
-        node_type*& bucket = m_buckets.at(index);
-        node_type* cur_node = bucket;
-        node_type* prev_node = cur_node;
+        const node_type* cur_node = m_buckets.at(index);
+        const node_type* prev_node = cur_node;
         while (cur_node) {
             if (cur_node == node) {
                 if (cur_node == prev_node) {
                     cache.m_prev = nullptr;
-                    cache.m_bucket = &bucket;
+                    cache.m_index = index;
                 } else {
                     cache.m_prev = prev_node;
-                    cache.m_bucket = nullptr;
+                    cache.m_index = 0;
                 }
                 break;
             }
@@ -354,13 +353,13 @@ public:
         }
     }
 
-    bool erase_if_modified(const node_type* node, const premodify_cache& cache)
+    bool erase_if_modified(node_type* node, const premodify_cache& cache)
     {
         if (m_hasher(m_key_from_value(node->value())) != node->hash()) {
             if (cache.m_prev) {
-                cache.m_prev->set_next_hashptr(node->next_hash());
+                const_cast<node_type*>(cache.m_prev)->set_next_hashptr(node->next_hash());
             } else {
-                *cache.m_bucket = node->next_hash();
+                m_buckets.at(cache.m_index) = node->next_hash();
             }
             m_size--;
             return true;
@@ -371,8 +370,9 @@ public:
     void insert_node(node_type* node, const insert_hints& hints)
     {
         node->set_hash(hints.m_hash);
-        node->set_next_hashptr(*hints.m_bucket);
-        *hints.m_bucket = node;
+        node_type*& bucket = m_buckets.at(hints.m_index);
+        node->set_next_hashptr(bucket);
+        bucket = node;
         m_size++;
     }
 

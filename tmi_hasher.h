@@ -91,7 +91,7 @@ private:
         tree_type::create_premodify_cache(node, cache);
     }
 
-    bool tmi_erase_if_modified(const node_type* node, const premodify_cache& cache)
+    bool tmi_erase_if_modified(node_type* node, const premodify_cache& cache)
     {
         return tree_type::erase_if_modified(node, cache);
     }
