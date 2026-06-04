@@ -204,16 +204,15 @@ public:
 
     insert_return_type insert(node_handle&& handle)
     {
-        node_type* node = handle.m_node;
-        if(!node) {
+        if(!handle) {
             return {end(), false, {}};
         }
-        auto ret = m_parent.do_insert(node);
+        auto ret = m_parent.do_insert(handle.get());
         const auto& [new_node, inserted] = ret;
         if (!inserted) {
             return {tree_type::make_iterator(new_node), false, std::move(handle)};
         }
-        handle.m_node = nullptr;
+        handle.release();
         return {tree_type::make_iterator(new_node), true, {}};
     }
 

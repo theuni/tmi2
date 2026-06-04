@@ -5,8 +5,6 @@
 #ifndef TMI_NODEHANDLE_H_
 #define TMI_NODEHANDLE_H_
 
-#include "tmi_fwd.h" // IWYU pragma: keep
-
 #include <memory>
 #include <optional>
 
@@ -23,17 +21,6 @@ class node_handle
     std::optional<node_allocator_type> m_alloc{};
     node_type* m_node = nullptr;
 
-    template <typename, typename, typename>
-    friend class tmi::multi_index_container;
-
-    template <typename, typename, typename, typename>
-    friend class tmi::tmi_comparator;
-
-    template <typename, typename, typename, typename>
-    friend class tmi::tmi_hasher;
-
-    constexpr node_handle(const node_allocator_type& alloc, node_type* node) noexcept : m_alloc(alloc), m_node(node){}
-
     void destroy()
     {
         if (m_node) {
@@ -44,6 +31,7 @@ class node_handle
     }
 
 public:
+    constexpr node_handle(const node_allocator_type& alloc, node_type* node) noexcept : m_alloc(alloc), m_node(node){}
     constexpr node_handle() noexcept = default;
     node_handle(node_handle&& rhs) noexcept : m_alloc(std::move(rhs.m_alloc)), m_node(rhs.m_node)
     {
@@ -96,6 +84,16 @@ public:
         } else if (empty() != rhs.empty()) {
             std::swap(m_alloc, rhs.m_alloc);
         }
+    }
+    /* extra function for tmi */
+    node_type* get() const
+    {
+        return m_node;
+    }
+    /* extra function for tmi */
+    void release()
+    {
+        m_node = nullptr;
     }
 };
 
