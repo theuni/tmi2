@@ -67,6 +67,13 @@ private:
         return x;
     }
 
+    static const node_type* tree_min(const node_type* x)
+    {
+        while (x->left() != nullptr)
+            x = x->left();
+        return x;
+    }
+
     static node_type* tree_next(node_type* x)
     {
         if (x->right() != nullptr)

@@ -190,12 +190,17 @@ public:
     using typename tminode<T, Indices>::value_type;
     using tminode<T, Indices>::value;
 
-    tmi_indexed_comparator_node* parent() const
+    const tmi_indexed_comparator_node* parent() const
+    {
+        return reinterpret_cast<const tmi_indexed_comparator_node*>(std::get<I>(m_data).par_and_flg & ~1UL);
+    }
+
+    tmi_indexed_comparator_node* parent()
     {
         return reinterpret_cast<tmi_indexed_comparator_node*>(std::get<I>(m_data).par_and_flg & ~1UL);
     }
 
-    void set_parent(tmi_indexed_comparator_node *p)
+    void set_parent(const tmi_indexed_comparator_node *p)
     {
         auto& par_and_flg = std::get<I>(m_data).par_and_flg;
         par_and_flg = (par_and_flg & 1UL) | reinterpret_cast<uintptr_t>(p);
@@ -216,25 +221,36 @@ public:
         std::get<I>(m_data).par_and_flg ^= 1UL;
     }
 
-    tmi_indexed_comparator_node* left() const
+    const tmi_indexed_comparator_node* left() const
+    {
+        return static_cast<const tmi_indexed_comparator_node*>(std::get<I>(m_data).m_left);
+    }
+
+    const tmi_indexed_comparator_node* right() const
+    {
+        return static_cast<const tmi_indexed_comparator_node*>(std::get<I>(m_data).m_right);
+    }
+
+    tmi_indexed_comparator_node* left()
     {
         return static_cast<tmi_indexed_comparator_node*>(std::get<I>(m_data).m_left);
     }
 
-    tmi_indexed_comparator_node* right() const
+    tmi_indexed_comparator_node* right()
     {
         return static_cast<tmi_indexed_comparator_node*>(std::get<I>(m_data).m_right);
     }
 
-    void set_right(tmi_indexed_comparator_node* node)
+    void set_right(const tmi_indexed_comparator_node* node)
     {
-        std::get<I>(m_data).m_right = node;
+        std::get<I>(m_data).m_right = const_cast<tmi_indexed_comparator_node*>(node);
     }
 
-    void set_left(tmi_indexed_comparator_node* node)
+    void set_left(const tmi_indexed_comparator_node* node)
     {
-        std::get<I>(m_data).m_left = node;
+        std::get<I>(m_data).m_left = const_cast<tmi_indexed_comparator_node*>(node);
     }
+
     void reset()
     {
         std::get<I>(m_data) = {};
