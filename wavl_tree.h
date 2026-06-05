@@ -21,6 +21,8 @@ public:
     using key_compare_type = Comparator;
     using key_type = typename key_from_value_type::result_type;
     using value_type = node_type::value_type;
+    using size_type = std::size_t;
+    using difference_type = std::ptrdiff_t;
     static constexpr bool unique_keys() { return Unique; }
 
     struct insert_hints {
@@ -392,18 +394,33 @@ public:
         return false;
     }
 
-    void clear()
+    void swap(wavl_tree& rhs)
+    {
+        auto temp_size = m_size;
+        auto temp_root = m_root;
+        m_size = rhs.m_size;
+        m_root = rhs.m_root;
+        rhs.m_size = temp_size;
+        rhs.m_root = temp_root;
+    }
+
+    void clear() noexcept
     {
         m_root = nullptr;
         m_size = 0;
     }
  
-    size_t size() const
+    size_t size() const noexcept
     {
         return m_size;
     }
 
-    bool empty() const
+    size_type max_size() const noexcept
+    {
+        return std::numeric_limits<difference_type>::max();
+    }
+
+    bool empty() const noexcept
     {
         return !size();
     }
@@ -464,19 +481,73 @@ public:
         bool operator==(iterator rhs) const { return m_node == rhs.m_node; }
         bool operator!=(iterator rhs) const { return m_node != rhs.m_node; }
     };
-    using const_iterator = iterator;
 
-    iterator begin() const
+    using const_iterator = iterator;
+    using reverse_iterator = std::reverse_iterator<iterator>;
+    using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+    iterator begin() noexcept
     {
-        node_type* root = m_root;
-        if (root == nullptr)
+        if (m_root == nullptr)
             return end();
         return make_iterator(tree_min(m_root));
     }
 
-    iterator end() const
+    const_iterator begin() const noexcept
+    {
+        if (m_root == nullptr)
+            return end();
+        return make_iterator(tree_min(m_root));
+    }
+
+    iterator end() noexcept
     {
         return make_iterator(nullptr);
+    }
+
+    const_iterator end() const noexcept
+    {
+        return make_iterator(nullptr);
+    }
+
+    reverse_iterator rbegin() noexcept
+    {
+        return std::reverse_iterator(begin());
+    }
+
+    const_reverse_iterator rbegin() const noexcept
+    {
+        return std::reverse_iterator(begin());
+    }
+
+    reverse_iterator rend() noexcept
+    {
+        return std::reverse_iterator(end());
+    }
+
+    const_reverse_iterator rend() const noexcept
+    {
+        return std::reverse_iterator(end());
+    }
+
+    const_iterator cbegin() const noexcept
+    {
+        return begin();
+    }
+
+    const_iterator cend() const noexcept
+    {
+        return end();
+    }
+
+    const_reverse_iterator crbegin() const noexcept
+    {
+        return rbegin();
+    }
+
+    const_reverse_iterator crend() const noexcept
+    {
+        return rend();
     }
 
     template<typename CompatibleKey>
@@ -539,7 +610,24 @@ public:
     }
 
     template<typename CompatibleKey>
-    iterator find(const CompatibleKey& key) const
+    const_iterator find(const CompatibleKey& key) const
+    {
+        const node_type* curr = m_root;
+        while (curr != nullptr) {
+            const auto& curr_key = m_key_from_value(curr->value());
+            if (m_comparator(key, curr_key)) {
+                curr = curr->left();
+            } else if (m_comparator(curr_key, key)) {
+                curr = curr->right();
+            } else {
+                return make_iterator(curr);
+            }
+        }
+        return end();
+    }
+
+    template<typename CompatibleKey>
+    iterator find(const CompatibleKey& key)
     {
         node_type* curr = m_root;
         while (curr != nullptr) {
@@ -553,6 +641,23 @@ public:
             }
         }
         return end();
+    }
+
+    template<typename CompatibleKey>
+    bool contains(const CompatibleKey& key) const
+    {
+        node_type* curr = m_root;
+        while (curr != nullptr) {
+            const auto& curr_key = m_key_from_value(curr->value());
+            if (m_comparator(key, curr_key)) {
+                curr = curr->left();
+            } else if (m_comparator(curr_key, key)) {
+                curr = curr->right();
+            } else {
+                return true;
+            }
+        }
+        return false;
     }
 
     iterator erase(iterator it)
@@ -582,6 +687,15 @@ public:
         return ret;
     }
 
+    key_compare_type key_comp() const
+    {
+        return m_comparator;
+    }
+    key_compare_type value_comp() const
+    {
+        return m_comparator;
+    }
+
 protected:
 
     const_iterator make_iterator(const node_type* node) const
@@ -591,6 +705,11 @@ protected:
     const node_type* node_from_iterator(const_iterator it) const
     {
         return it.m_node;
+    }
+
+    node_type* node_from_iterator(iterator it)
+    {
+        return const_cast<node_type*>(it.m_node);
     }
 
 

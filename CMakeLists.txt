@@ -41,6 +41,7 @@ add_executable(tmi-test test/test.cpp
     test/hashed_non_unique.cpp
     test/ordered_unique.cpp
     test/ordered_non_unique.cpp
+    test/stdset.cpp
 )
 target_compile_definitions(tmi-test PRIVATE DEBUG)
 target_include_directories(tmi-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
