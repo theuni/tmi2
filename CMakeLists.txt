@@ -51,3 +51,18 @@ enable_testing()
 foreach(suite hashed_unique hashed_non_unique ordered_unique ordered_non_unique)
     add_test(NAME ${suite} COMMAND tmi-test ${suite})
 endforeach()
+
+option(BUILD_FUZZ "Build libFuzzer fuzz targets (requires Clang)" OFF)
+
+if(BUILD_FUZZ)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "BUILD_FUZZ requires Clang (got ${CMAKE_CXX_COMPILER_ID})")
+    endif()
+    add_executable(fuzz_multi_index fuzz/fuzz_multi_index.cpp)
+    target_include_directories(fuzz_multi_index PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_definitions(fuzz_multi_index PRIVATE DEBUG)
+    target_compile_options(fuzz_multi_index PRIVATE
+        -g -O1 -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+    target_link_options(fuzz_multi_index PRIVATE
+        -fsanitize=fuzzer,address,undefined)
+endif()

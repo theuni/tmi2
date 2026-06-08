@@ -1,1 +1,9 @@
 /*build*
+/fuzz/corpus/
+fuzz-*.log
+crash-*
+leak-*
+timeout-*
+oom-*
+slow-unit-*
+minimized-from-*
