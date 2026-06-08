@@ -46,3 +46,8 @@ add_executable(tmi-test test/test.cpp
 target_compile_definitions(tmi-test PRIVATE DEBUG)
 target_include_directories(tmi-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tmi-test PRIVATE warnings_interface)
+
+enable_testing()
+foreach(suite hashed_unique hashed_non_unique ordered_unique ordered_non_unique)
+    add_test(NAME ${suite} COMMAND tmi-test ${suite})
+endforeach()
