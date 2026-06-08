@@ -94,7 +94,7 @@ private:
         void clear()
         {
             if (m_bucket_count) {
-                std::memset(m_buckets, 0, m_bucket_count);
+                std::memset(m_buckets, 0, m_bucket_count * sizeof(node_type*));
                 m_bucket_count = 0;
             }
         }
