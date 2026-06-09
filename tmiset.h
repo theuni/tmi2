@@ -330,7 +330,7 @@ public:
     }
 
     void swap(set_base & s) noexcept(std::allocator_traits<Allocator>::is_always_equal::value &&
-                               std::is_nothrow_swappable<Compare>::value)
+                               std::is_nothrow_swappable_v<tree_type>)
     {
         return tree_type::swap(s);
     }
