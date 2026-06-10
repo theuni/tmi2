@@ -63,7 +63,7 @@ private:
 
     tmi_hasher(Parent& parent, const allocator_type& alloc) : tree_type{alloc}, m_parent(parent) {}
 
-    tmi_hasher(Parent& parent, const allocator_type& alloc, const ctor_args& args) : tree_type(alloc, std::get<0>(args), std::get<1>(args), std::get<2>(args), std::get<3>(args)), m_parent(parent){}
+    tmi_hasher(Parent& parent, const allocator_type& alloc, const ctor_args& args) : tree_type(std::get<0>(args), std::get<1>(args), std::get<2>(args), std::get<3>(args), alloc), m_parent(parent){}
 
     tmi_hasher(Parent& parent, const tmi_hasher& rhs) : tree_type(static_cast<tree_type&>(rhs)), m_parent(parent){}
     tmi_hasher(Parent& parent, tmi_hasher&& rhs) : tree_type(std::move(static_cast<tree_type&>(rhs))), m_parent(parent)

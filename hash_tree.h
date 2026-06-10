@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <bit>
 #include <cassert>
+#include <cmath>
 #include <cstring>
 #include <cstddef>
 #include <iterator>
@@ -24,7 +25,7 @@ public:
     class iterator;
 
     using node_type = Node;
-    using size_type = size_t;
+    using size_type = std::size_t;
     using key_from_value_type = KeyFromValue;
     using key_type = typename key_from_value_type::result_type;
     using hasher_type = Hash;
@@ -33,6 +34,7 @@ public:
     using allocator_type = Allocator;
     using node_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<node_type>;
     using value_type = node_type::value_type;
+    using difference_type = std::ptrdiff_t;
 
 private:
 
@@ -149,6 +151,11 @@ private:
             return ret;
         }
 
+        [[nodiscard]] node_allocator_type get_allocator() const noexcept
+        {
+            return m_alloc;
+        }
+
         private:
 
         void do_rehash_copy(size_t new_bucket_count)
@@ -224,6 +231,7 @@ private:
     [[no_unique_address]] key_from_value_type m_key_from_value;
     [[no_unique_address]] hasher_type m_hasher;
     [[no_unique_address]] key_equal_type m_pred;
+    float m_max_load_factor{0.8f};
 
 public:
     static constexpr bool unique_keys() { return Unique; }
@@ -240,9 +248,11 @@ public:
 
     static constexpr bool requires_premodify_cache() { return true; }
 
-    hash_tree(const allocator_type& alloc) : m_buckets(alloc) {}
+    hash_tree(const allocator_type& alloc = allocator_type{}) : m_buckets(alloc) {}
+    hash_tree(size_t bucket_count, const allocator_type& alloc) : m_buckets(alloc, bucket_count) {}
+    hash_tree(size_t bucket_count, const hasher_type& hasher, const allocator_type& alloc) : m_buckets(alloc, bucket_count), m_hasher(hasher) {}
 
-    hash_tree(const allocator_type& alloc, size_t bucket_count, key_from_value_type key_from_value ,hasher_type hasher, key_equal_type key_equal) : m_buckets(alloc, bucket_count), m_key_from_value(key_from_value), m_hasher(hasher), m_pred(key_equal){}
+    hash_tree(size_t bucket_count, key_from_value_type key_from_value ,hasher_type hasher, key_equal_type key_equal, const allocator_type& alloc) : m_buckets(alloc, bucket_count), m_key_from_value(key_from_value), m_hasher(hasher), m_pred(key_equal){}
 
     hash_tree(const hash_tree& rhs) = delete;
     hash_tree(hash_tree&& rhs) = default;
@@ -302,7 +312,7 @@ public:
         if (!bucket_count) {
             m_buckets.init(first_hashes_resize);
             bucket_count = first_hashes_resize;
-        } else if (static_cast<double>(m_size) / static_cast<double>(bucket_count) >= 0.8) {
+        } else if (static_cast<double>(m_size) / static_cast<double>(bucket_count) >= m_max_load_factor) {
             bucket_count *= 2;
             m_buckets.rehash(bucket_count);
         }
@@ -377,7 +387,8 @@ public:
     }
 
 
-    const node_type* find_hash(const key_type& hash_key) const
+    template <typename CompatibleKey>
+    const node_type* find_hash(const CompatibleKey& hash_key) const
     {
         const size_t hash = m_hasher(hash_key);
         const size_t bucket_count = m_buckets.size();
@@ -448,11 +459,44 @@ public:
         }
         bool operator==(iterator rhs) const { return m_node == rhs.m_node; }
         bool operator!=(iterator rhs) const { return m_node != rhs.m_node; }
-    }
-;
+    };
     using const_iterator = iterator;
 
-    iterator begin()
+    class local_iterator
+    {
+        const node_type* m_node{};
+        local_iterator(const node_type* node) : m_node(node) {}
+        friend class hash_tree;
+    public:
+
+        typedef const hash_tree::value_type value_type;
+        typedef const value_type* pointer;
+        typedef const value_type& reference;
+        using difference_type = std::ptrdiff_t;
+        using element_type = const value_type;
+        using local_iterator_category = std::forward_iterator_tag;
+        local_iterator() = default;
+        reference operator*() const { return m_node->value(); }
+        pointer operator->() const { return std::pointer_traits<pointer>::pointer_to(m_node->value()); }
+        local_iterator& operator++()
+        {
+            m_node = m_node->next_hash();
+            return *this;
+        }
+        local_iterator operator++(int)
+        {
+            local_iterator copy(m_node);
+            m_node = m_node->next_hash();
+            return copy;
+        }
+        bool operator==(local_iterator rhs) const { return m_node == rhs.m_node; }
+        bool operator!=(local_iterator rhs) const { return m_node != rhs.m_node; }
+
+    };
+
+    using const_local_iterator = local_iterator;
+
+    iterator begin() noexcept
     {
         for (const auto& bucket : m_buckets) {
             if (bucket) {
@@ -462,7 +506,7 @@ public:
         return end();
     }
 
-    const_iterator begin() const
+    const_iterator begin() const noexcept
     {
         for (const auto& bucket : m_buckets) {
             if (bucket) {
@@ -472,14 +516,74 @@ public:
         return end();
     }
 
-    iterator end()
+    iterator end() noexcept
     {
         return make_iterator(nullptr);
     }
 
-    const_iterator end() const
+    const_iterator end() const noexcept
     {
         return make_iterator(nullptr);
+    }
+
+    const_iterator cbegin() const noexcept
+    {
+        return begin();
+    }
+
+    const_iterator cend() const noexcept
+    {
+        return end();
+    }
+
+    local_iterator begin(size_type n)
+    {
+        return local_iterator{m_buckets.at(n)};
+    }
+
+    local_iterator end(size_type)
+    {
+        return local_iterator{nullptr};
+    }
+
+    const_local_iterator begin(size_type n) const
+    {
+        return const_local_iterator{m_buckets.at(n)};
+    }
+
+    const_local_iterator end(size_type) const
+    {
+        return const_local_iterator{nullptr};
+    }
+
+    const_local_iterator cbegin(size_type n) const
+    {
+        return begin(n);
+    }
+
+    const_local_iterator cend(size_type n) const
+    {
+        return end(n);
+    }
+
+    template<typename CompatibleKey>
+    iterator lower_bound(const CompatibleKey& key) const
+    {
+        //TODO: Fix insert to group equal values
+        return end();
+    }
+
+    template<typename CompatibleKey>
+    iterator upper_bound(const CompatibleKey& key) const
+    {
+        //TODO: Fix insert to group equal values
+        return end();
+    }
+
+    template<typename CompatibleKey>
+    std::pair<iterator, iterator> equal_range( const CompatibleKey& key) const
+    {
+        return { lower_bound(key), upper_bound(key) };
     }
 
     template <typename CompatibleKey>
@@ -519,20 +623,93 @@ public:
         return ret;
     }
 
-    void clear()
+    void clear() noexcept
     {
         m_size = 0;
         m_buckets.clear();
     }
 
-    size_t size() const
+    size_t size() const noexcept
     {
         return m_size;
     }
 
-    bool empty() const
+    bool empty() const noexcept
     {
-        return !m_size;
+        return !size();
+    }
+
+    void swap(hash_tree& rhs)
+    {
+        // TODO
+    }
+
+    template <typename CompatibleKey>
+    bool contains(const CompatibleKey& key) const
+    {
+        const size_t hash = m_hasher(key);
+        const size_t bucket_count = m_buckets.size();
+        if (!bucket_count) {
+            return false;
+        }
+        auto* node = m_buckets.at(hash % bucket_count);
+        while (node) {
+            if (node->hash() == hash) {
+                if (m_pred(m_key_from_value(node->value()), key)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    size_type bucket_size(size_type n) const
+    {
+        return std::distance(begin(n), end(n));
+    }
+
+    size_type bucket_count() const
+    {
+        return m_buckets.size();
+    }
+
+    float load_factor() const
+    {
+        return size() / bucket_count();
+    }
+
+    float max_load_factor() const
+    {
+        return m_max_load_factor;
+    }
+
+    void max_load_factor(float n)
+    {
+        m_max_load_factor = std::max(n, m_max_load_factor);
+    }
+
+    void rehash(size_type buckets) {
+        m_buckets.rehash(buckets);
+    }
+
+    void reserve(size_type count)
+    {
+        rehash(std::ceil(count / max_load_factor()));
+    }
+
+    hasher_type hash_function() const
+    {
+        return m_hasher;
+    }
+
+    key_equal_type key_eq() const
+    {
+        return m_pred;
+    }
+
+    [[nodiscard]] allocator_type get_allocator() const noexcept
+    {
+        return m_buckets.get_allocator();
     }
 
 protected:
@@ -540,6 +717,11 @@ protected:
     const node_type* node_from_iterator(const_iterator it) const
     {
         return it.m_node;
+    }
+
+    node_type* node_from_iterator(iterator it)
+    {
+        return const_cast<node_type*>(it.m_node);
     }
 
     const_iterator make_iterator(const node_type* node) const
