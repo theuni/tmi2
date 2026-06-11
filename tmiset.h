@@ -181,7 +181,11 @@ public:
     insert_result_type emplace(Args&&... args)
     {
         data_type* node = construct_impl(std::forward<Args>(args)...);
-        return make_insert_result(insert_impl(node));
+        std::pair<data_type*,bool> ret = insert_impl(node);
+        if(!ret.second) {
+            destroy_impl(node);
+        }
+        return make_insert_result(ret);
     }
 
     template <class... Args>
@@ -461,12 +465,10 @@ private:
         for(auto it = source.begin(); it != source.end();)
         {
             data_type* node = source.node_from_iterator(it++);
-            data_type* conflict = tree_type::preinsert_node(node, hints);
-            if (conflict) {
-                continue;
+            std::pair<data_type*,bool> ret = insert_impl(node);
+            if (ret.second) {
+                source.remove_node_impl(node);
             }
-            tree_type::insert_node(node, hints);
-            source.remove_node(node);
         }
     }
 
@@ -482,7 +484,6 @@ private:
         typename tree_type::insert_hints hints;
         data_type* conflict = tree_type::preinsert_node(node, hints);
         if (conflict) {
-            destroy_impl(node);
             return std::make_pair(conflict, false);
         }
         tree_type::insert_node(node, hints);
