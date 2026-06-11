@@ -199,12 +199,12 @@ public:
 
     size_t size() const
     {
-        return tree_type::size();
+        return m_parent.size();
     }
 
     bool empty() const
     {
-        return tree_type::empty();
+        return m_parent.empty();
     }
 
     insert_return_type insert(node_handle&& handle)

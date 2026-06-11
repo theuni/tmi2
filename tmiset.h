@@ -166,8 +166,16 @@ public:
     using tree_type::crbegin;
     using tree_type::crend;
 
-    using tree_type::empty;
-    using tree_type::size;
+    size_type size() const noexcept
+    {
+        return m_size;
+    }
+
+    bool empty() const noexcept
+    {
+        return !size();
+    }
+
     using tree_type::max_size;
 
 
@@ -236,7 +244,7 @@ public:
     node_type extract(const_iterator position)
     {
         data_type* node = tree_type::node_from_iterator(position);
-        tree_type::remove_node(node);
+        remove_node_impl(node);
         return {m_alloc, node};
     }
 
@@ -282,7 +290,7 @@ public:
     iterator erase(const_iterator position)
     {
         data_type* node = tree_type::node_from_iterator(position++);
-        tree_type::remove_node(node);
+        remove_node_impl(node);
         destroy_impl(node);
         return position;
     }
@@ -461,7 +469,6 @@ private:
     template<class S2>
     void merge_impl(S2&& source)
     {
-        typename tree_type::insert_hints hints;
         for(auto it = source.begin(); it != source.end();)
         {
             data_type* node = source.node_from_iterator(it++);
@@ -479,6 +486,12 @@ private:
         return std::uninitialized_construct_using_allocator<data_type>(node, m_alloc, std::forward<Args>(args)...);
     }
 
+    void remove_node_impl(data_type* node)
+    {
+        tree_type::remove_node(node);
+        m_size--;
+    }
+
     std::pair<data_type*,bool> insert_impl(data_type* node)
     {
         typename tree_type::insert_hints hints;
@@ -486,6 +499,7 @@ private:
         if (conflict) {
             return std::make_pair(conflict, false);
         }
+        m_size++;
         tree_type::insert_node(node, hints);
         return std::make_pair(node, true);
     }
@@ -497,6 +511,7 @@ private:
     }
 
     [[no_unique_address]] node_allocator_type m_alloc;
+    size_type m_size{0};
 };
 
 namespace detail

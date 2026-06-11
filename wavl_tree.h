@@ -38,8 +38,6 @@ private:
     [[no_unique_address]] key_from_value_type m_key_from_value;
     [[no_unique_address]] key_compare_type m_comparator;
 
-    size_t m_size{0};
-
     static node_type* tree_max(node_type* x) {
       while (x->right() != nullptr)
         x = x->right();
@@ -287,7 +285,6 @@ public:
     {
         tree_remove(node);
         verify_tree(m_root);
-        m_size--;
     }
 
     void insert_node_direct(node_type* node)
@@ -367,7 +364,6 @@ public:
         } else {
             m_root = node;
         }
-        m_size++;
         verify_tree(m_root);
     }
 
@@ -396,35 +392,21 @@ public:
 
     void swap(wavl_tree& rhs)
     {
-        auto temp_size = m_size;
         auto temp_root = m_root;
-        m_size = rhs.m_size;
         m_root = rhs.m_root;
-        rhs.m_size = temp_size;
         rhs.m_root = temp_root;
     }
 
     void clear() noexcept
     {
         m_root = nullptr;
-        m_size = 0;
     }
  
-    size_t size() const noexcept
-    {
-        return m_size;
-    }
-
     size_type max_size() const noexcept
     {
         return std::numeric_limits<difference_type>::max();
     }
 
-    bool empty() const noexcept
-    {
-        return !size();
-    }
-   
     class iterator
     {
         const node_type* m_node{};

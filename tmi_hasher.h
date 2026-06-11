@@ -60,6 +60,7 @@ private:
     static constexpr bool requires_premodify_cache() { return tree_type::requires_premodify_cache(); }
 
     Parent& m_parent;
+    float m_max_load_factor{0.8f};
 
     tmi_hasher(Parent& parent, const allocator_type& alloc) : tree_type{alloc}, m_parent(parent) {}
 
@@ -83,6 +84,13 @@ private:
 
     node_type* tmi_preinsert_node(const node_type* node, insert_hints& hints)
     {
+        size_t buckets = tree_type::bucket_count();
+
+        if (!buckets) {
+            tree_type::rehash(1);
+        } else if (size() + 1 > buckets * max_load_factor()) {
+            tree_type::rehash(buckets * 2);
+        }
         return tree_type::preinsert_node(node, hints);
     }
 
@@ -194,12 +202,12 @@ public:
 
     size_t size() const
     {
-        return tree_type::size();
+        return m_parent.size();
     }
 
     bool empty() const
     {
-        return tree_type::empty();
+        return m_parent.empty();
     }
 
     insert_return_type insert(node_handle&& handle)
@@ -230,6 +238,30 @@ public:
     allocator_type get_allocator() const noexcept
     {
         return m_parent.get_allocator();
+    }
+
+    void rehash(size_type buckets) {
+        tree_type::rehash(buckets);
+    }
+
+    void reserve(size_type count)
+    {
+        rehash(std::ceil(count / max_load_factor()));
+    }
+
+    float load_factor() const
+    {
+        return size() / tree_type::bucket_count();
+    }
+
+    float max_load_factor() const
+    {
+        return m_max_load_factor;
+    }
+
+    void max_load_factor(float n)
+    {
+        m_max_load_factor = std::max(n, m_max_load_factor);
     }
 };
 

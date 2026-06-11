@@ -581,6 +581,17 @@ public:
     {
         return m_alloc;
     }
+
+    size_t size() const noexcept
+    {
+        return m_size;
+    }
+
+    bool empty() const noexcept
+    {
+        return !size();
+    }
+
 };
 
 } // namespace tmi

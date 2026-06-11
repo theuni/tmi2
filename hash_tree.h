@@ -227,11 +227,9 @@ private:
     static constexpr size_t first_hashes_resize = 2048;
 
     hash_buckets m_buckets;
-    size_t m_size{0};
     [[no_unique_address]] key_from_value_type m_key_from_value;
     [[no_unique_address]] hasher_type m_hasher;
     [[no_unique_address]] key_equal_type m_pred;
-    float m_max_load_factor{0.8f};
 
 public:
     static constexpr bool unique_keys() { return Unique; }
@@ -281,7 +279,6 @@ public:
             prev_node = cur_node;
             cur_node = cur_node->next_hash();
         }
-        m_size--;
     }
 
     void insert_node_direct(node_type* node)
@@ -295,27 +292,12 @@ public:
 
         node->set_next_hashptr(bucket);
         bucket = node;
-        m_size++;
     }
 
-    /*
-        First rehash if necessary, using first_hashes_resize as the initial
-        size if empty. Then find calculate the bucket and insert there.
-    */
-    //TODO: instead, add a "m_needs_rehash" to hints to keep this const
     node_type* preinsert_node(const node_type* node, insert_hints& hints)
     {
-        size_t bucket_count = m_buckets.size();
         const auto& key = m_key_from_value(node->value());
         const size_t hash = m_hasher(key);
-
-        if (!bucket_count) {
-            m_buckets.init(first_hashes_resize);
-            bucket_count = first_hashes_resize;
-        } else if (static_cast<double>(m_size) / static_cast<double>(bucket_count) >= m_max_load_factor) {
-            bucket_count *= 2;
-            m_buckets.rehash(bucket_count);
-        }
 
         const size_t index = hash % m_buckets.size();
         node_type*& bucket = m_buckets.at(index);
@@ -371,7 +353,6 @@ public:
             } else {
                 m_buckets.at(cache.m_index) = node->next_hash();
             }
-            m_size--;
             return true;
         }
         return false;
@@ -383,7 +364,6 @@ public:
         node_type*& bucket = m_buckets.at(hints.m_index);
         node->set_next_hashptr(bucket);
         bucket = node;
-        m_size++;
     }
 
 
@@ -625,18 +605,7 @@ public:
 
     void clear() noexcept
     {
-        m_size = 0;
         m_buckets.clear();
-    }
-
-    size_t size() const noexcept
-    {
-        return m_size;
-    }
-
-    bool empty() const noexcept
-    {
-        return !size();
     }
 
     void swap(hash_tree& rhs)
@@ -673,28 +642,8 @@ public:
         return m_buckets.size();
     }
 
-    float load_factor() const
-    {
-        return size() / bucket_count();
-    }
-
-    float max_load_factor() const
-    {
-        return m_max_load_factor;
-    }
-
-    void max_load_factor(float n)
-    {
-        m_max_load_factor = std::max(n, m_max_load_factor);
-    }
-
     void rehash(size_type buckets) {
         m_buckets.rehash(buckets);
-    }
-
-    void reserve(size_type count)
-    {
-        rehash(std::ceil(count / max_load_factor()));
     }
 
     hasher_type hash_function() const

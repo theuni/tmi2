@@ -67,6 +67,8 @@ public:
     using insert_return_type = std::conditional_t<Unique, tmi::detail::insert_return_type<iterator, node_type>, iterator>;
     using insert_result_type = std::conditional_t<Unique, std::pair<iterator, bool>, iterator>;
 
+    using buckets_type = std::unique_ptr<data_type[]>;
+
     unordered_set_base()
     {
     }
@@ -158,8 +160,15 @@ public:
     using hash_table_type::cbegin;
     using hash_table_type::cend;
 
-    using hash_table_type::empty;
-    using hash_table_type::size;
+    size_type size() const noexcept
+    {
+        return m_size;
+    }
+
+    bool empty() const noexcept
+    {
+        return !size();
+    }
 
     size_type max_size() const noexcept
     {
@@ -177,7 +186,11 @@ public:
     insert_result_type emplace(Args&&... args)
     {
         data_type* node = construct_impl(std::forward<Args>(args)...);
-        return make_insert_result(insert_impl(node));
+        std::pair<data_type*,bool> ret = insert_impl(node);
+        if(!ret.second) {
+            destroy_impl(node);
+        }
+        return make_insert_result(ret);
     }
 
     template <class... Args>
@@ -228,7 +241,7 @@ public:
     node_type extract(const_iterator position)
     {
         data_type* node = hash_table_type::node_from_iterator(position);
-        hash_table_type::remove_node(node);
+        remove_node_impl(node);
         return {hash_table_type::get_allocator(), node};
     }
 
@@ -274,7 +287,7 @@ public:
     iterator erase(const_iterator position)
     {
         data_type* node = hash_table_type::node_from_iterator(position++);
-        hash_table_type::remove_node(node);
+        remove_node_impl(node);
         destroy_impl(node);
         return position;
     }
@@ -451,6 +464,16 @@ public:
         return hash_table_type::bucket(key);
     }
 
+    void rehash(size_type buckets) {
+        auto new_buckets{std::make_unique<data_type[]>(buckets)};
+        hash_table_type::rehash(buckets);
+    }
+
+    void reserve(size_type count)
+    {
+        rehash(std::ceil(count / max_load_factor()));
+    }
+
     using hash_table_type::bucket_size;
     using hash_table_type::bucket_count;
 
@@ -459,28 +482,40 @@ public:
         return max_size();
     }
 
-    using hash_table_type::load_factor;
-    using hash_table_type::max_load_factor;
-    using hash_table_type::rehash;
-    using hash_table_type::reserve;
+    float load_factor() const
+    {
+        return size() / hash_table_type::bucket_count();
+    }
+
+    float max_load_factor() const
+    {
+        return m_max_load_factor;
+    }
+
+    void max_load_factor(float n)
+    {
+        m_max_load_factor = std::max(n, m_max_load_factor);
+    }
+
     using hash_table_type::hash_function;
     using hash_table_type::key_eq;
 
 private:
 
+    size_type m_size{0};
+    float m_max_load_factor{0.8f};
+    buckets_type m_buckets{};
+
     template<class S2>
     void merge_impl(S2&& source)
     {
-        typename hash_table_type::insert_hints hints;
         for(auto it = source.begin(); it != source.end();)
         {
             data_type* node = source.node_from_iterator(it++);
-            data_type* conflict = hash_table_type::preinsert_node(node, hints);
-            if (conflict) {
-                continue;
+            std::pair<data_type*,bool> ret = insert_impl(node);
+            if (ret.second) {
+                source.remove_node_impl(node);
             }
-            hash_table_type::insert_node(node, hints);
-            source.remove_node(node);
         }
     }
 
@@ -492,15 +527,29 @@ private:
         return std::uninitialized_construct_using_allocator<data_type>(node, alloc, std::forward<Args>(args)...);
     }
 
+    void remove_node_impl(data_type* node)
+    {
+        hash_table_type::remove_node(node);
+        m_size--;
+    }
+
     std::pair<data_type*,bool> insert_impl(data_type* node)
     {
         typename hash_table_type::insert_hints hints;
+        size_t buckets = bucket_count();
+
+        if (!buckets) {
+            rehash(1);
+        } else if (size() + 1 > buckets * max_load_factor()) {
+            rehash(buckets * 2);
+        }
+
         data_type* conflict = hash_table_type::preinsert_node(node, hints);
         if (conflict) {
-            destroy_impl(node);
             return std::make_pair(conflict, false);
         }
         hash_table_type::insert_node(node, hints);
+        m_size++;
         return std::make_pair(node, true);
     }
 
