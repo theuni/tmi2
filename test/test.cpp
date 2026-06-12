@@ -3,6 +3,9 @@
 #include <test/ordered_non_unique.h>
 #include <test/ordered_unique.h>
 
+#include <test/stdset.h>
+#include <test/std_unordered_set.h>
+
 #include <string_view>
 
 enum ExitStatus { Success = 0, Failure = 1 };
@@ -13,6 +16,9 @@ int main(int argc, char *argv[]) {
     test_hashed_unique();
     test_ordered_unique();
     test_ordered_non_unique();
+
+    test_std_unordered();
+    test_std_set();
     return ExitStatus::Success;
   }
 
@@ -31,6 +37,14 @@ int main(int argc, char *argv[]) {
   }
   if (name == "ordered_non_unique") {
     test_ordered_non_unique();
+    return ExitStatus::Success;
+  }
+  if (name == "std_unordered") {
+    test_std_unordered();
+    return ExitStatus::Success;
+  }
+  if (name == "std_set") {
+    test_std_set();
     return ExitStatus::Success;
   }
   return ExitStatus::Failure;

@@ -233,6 +233,42 @@ struct StringHash {
     { const_iter_pair_ret = cs.equal_range(ck); }
 }
 
+void test_std_unordered_iterator_validity()
+{
+    using set_type = tmi::unordered_set<std::string>;
+    auto test_remove = [](size_t set_size, size_t mod_val) {
+        set_type s;
+        std::vector<set_type::iterator> its;
+        its.reserve(set_size);
+        for (size_t i = 0; i < set_size; i++)
+        {
+            its.push_back(s.insert(std::to_string(i)).first);
+        }
+        for(size_t i = 0; i < s.size(); i++) {
+            if (i % mod_val == 0) {
+                auto it = s.find(std::to_string(i));
+                assert(it != s.end());
+                assert(std::erase(its, it) != 0);
+                s.erase(*it);
+            }
+        }
+        for (size_t i = 0; i < set_size; i++)
+        {
+            s.insert(std::to_string(i));
+        }
+        for(const auto it : its)
+        {
+            assert(!it->empty());
+        }
+        return true;
+    };
+    for(size_t i = 0; i < 100; i++) {
+        for(size_t j = 1; j < 100; j++) {
+            test_remove(i, j);
+        }
+    }
+}
+
 } // anonymous namespace
 
 void unordered_compile_only_test()
@@ -243,5 +279,9 @@ void unordered_compile_only_test()
     unordered_set_test_transparent();
 }
 
+void test_std_unordered()
+{
+    test_std_unordered_iterator_validity();
+}
 
 #pragma GCC diagnostic pop

@@ -182,6 +182,52 @@ void set_test_transparent()
     { const_iter_pair_ret = cs.equal_range(ck); }
 }
 
+void test_std_set_iterator_validity()
+{
+    using set_type = tmi::set<size_t>;
+    auto test_remove = [](size_t set_size, size_t mod_val) {
+        set_type s;
+        std::vector<set_type::iterator> its;
+        its.reserve(set_size);
+        for (size_t i = 0; i < set_size; i++)
+        {
+            its.push_back(s.insert(i).first);
+        }
+        auto past_end = s.end();
+        for(size_t i = 0; i < s.size(); i++) {
+            if (i % mod_val == 0) {
+                auto it = s.find(i);
+                assert(it != s.end());
+                assert(std::erase(its, it) != 0);
+                s.erase(*it);
+            }
+        }
+        if (its.size()) {
+            auto last = --past_end;
+            assert(*last == *its.back());
+        }
+        for (size_t i = 0; i < set_size; i++)
+        {
+            s.insert(i);
+        }
+        for(auto it = its.begin(); it != its.end();)
+        {
+            auto previt = it;
+            assert(**it < set_size);
+            it++;
+            if(previt == its.begin()) continue;
+            if(it == its.end()) break;
+            assert(**previt < **it);
+        }
+        return true;
+    };
+    for(size_t i = 0; i < 100; i++) {
+        for(size_t j = 1; j < 100; j++) {
+            test_remove(i, j);
+        }
+    }
+}
+
 
 } // anonymous namespace
 
@@ -191,6 +237,11 @@ void compile_only_test()
     set_test<my_type>();
     set_test<std::string, std::less<>>();
     set_test_transparent();
+}
+
+void test_std_set()
+{
+    test_std_set_iterator_validity();
 }
 
 #pragma GCC diagnostic pop
