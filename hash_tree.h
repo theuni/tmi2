@@ -15,6 +15,7 @@
 #include <limits>
 #include <tuple>
 #include <utility>
+#include <span>
 
 namespace tmi {
 
@@ -38,193 +39,7 @@ public:
 
 private:
 
-    class hash_buckets
-    {
-        using bucket_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<node_type*>;
-        [[no_unique_address]] bucket_allocator_type m_alloc;
-        node_type** m_buckets{nullptr};
-        size_t m_bucket_count{0};
-        size_t m_capacity{0};
-
-        struct allocation_result
-        {
-            typename std::allocator_traits<bucket_allocator_type>::pointer ptr;
-            typename std::allocator_traits<bucket_allocator_type>::size_type count;
-        };
-
-        public:
-        hash_buckets(const bucket_allocator_type& alloc) : m_alloc(alloc) {}
-
-        hash_buckets(hash_buckets&& rhs) : m_alloc(std::move(rhs.m_alloc)), m_buckets(rhs.m_buckets), m_bucket_count(rhs.m_bucket_count), m_capacity(rhs.m_capacity)
-        {
-            rhs.m_buckets = nullptr;
-            rhs.m_capacity = 0;
-            rhs.m_bucket_count = 0;
-        }
-        hash_buckets(const hash_buckets& rhs) : m_alloc(std::allocator_traits<bucket_allocator_type>::select_on_container_copy_construction(rhs.m_alloc))
-        {
-            init(rhs.m_bucket_count);
-        }
-        hash_buckets(const bucket_allocator_type& alloc, size_t size) : m_alloc(alloc)
-        {
-            init(size);
-        }
-        ~hash_buckets()
-        {
-            do_deallocate(m_buckets, m_capacity);
-        }
-        void init(size_t requested_size)
-        {
-            assert(!m_bucket_count);
-            size_t new_bucket_count = std::bit_ceil(requested_size);
-            if (m_capacity < new_bucket_count) {
-                do_deallocate(m_buckets, m_capacity);
-                m_buckets = do_allocate(new_bucket_count);
-                m_capacity = new_bucket_count;
-            }
-            m_bucket_count = new_bucket_count;
-        }
-        void rehash(size_t size)
-        {
-            size_t new_bucket_count = std::bit_ceil(size);
-            if (m_capacity >= new_bucket_count && new_bucket_count > m_bucket_count) {
-                do_rehash_inplace(new_bucket_count);
-            } else {
-                do_rehash_copy(new_bucket_count);
-            }
-        }
-        void clear()
-        {
-            if (m_bucket_count) {
-                std::memset(m_buckets, 0, m_bucket_count * sizeof(node_type*));
-                m_bucket_count = 0;
-            }
-        }
-        size_t size() const
-        {
-            return m_bucket_count;
-        }
-        bool empty() const
-        {
-            return m_bucket_count == 0;
-        }
-        const node_type* const* begin() const
-        {
-            return &m_buckets[0];
-        }
-        const node_type* const* end() const
-        {
-            return &m_buckets[0] + m_bucket_count;
-        }
-        node_type** begin()
-        {
-            return &m_buckets[0];
-        }
-        node_type** end()
-        {
-            return &m_buckets[0] + m_bucket_count;
-        }
-        const node_type* const& at(size_t index) const
-        {
-            return m_buckets[index];
-        }
-        node_type*& at(size_t index)
-        {
-            return m_buckets[index];
-        }
-        size_type bucket_count() const
-        {
-            return m_bucket_count;
-        }
-        size_type max_bucket_count() const
-        {
-            return std::numeric_limits<size_t>::max();
-        }
-        size_type bucket_size(size_type bucket) const
-        {
-            size_t ret = 0;
-            node_type* node = m_buckets[bucket];
-            while(node) {
-                node = node->next_hash();
-                ret++;
-            }
-            return ret;
-        }
-
-        [[nodiscard]] node_allocator_type get_allocator() const noexcept
-        {
-            return m_alloc;
-        }
-
-        private:
-
-        void do_rehash_copy(size_t new_bucket_count)
-        {
-            node_type** new_buckets = do_allocate(new_bucket_count);
-            node_type** old_buckets = m_buckets;
-            size_t old_capacity = m_capacity;
-            for(size_t i = 0; i < m_bucket_count; i++) {
-                node_type* cur_node = old_buckets[i];
-                while (cur_node) {
-                    node_type* next_node = cur_node->next_hash();
-                    const size_t index = cur_node->hash() % new_bucket_count;
-                    node_type*& new_bucket = new_buckets[index];
-                    cur_node->set_next_hashptr(new_bucket);
-                    new_bucket = cur_node;
-                    cur_node = next_node;
-                }
-            }
-            m_buckets = new_buckets;
-            m_bucket_count = new_bucket_count;
-            m_capacity = new_bucket_count;
-            do_deallocate(old_buckets, old_capacity);
-        }
-
-        void do_rehash_inplace(size_t new_bucket_count)
-        {
-            for(size_t i = 0; i < m_bucket_count; i++) {
-                node_type* cur_node = m_buckets[i];
-                node_type* prev_node = nullptr;
-                while (cur_node) {
-                    node_type* next_node = cur_node->next_hash();
-                    const size_t index = cur_node->hash() % new_bucket_count;
-                    node_type*& new_bucket = m_buckets[index];
-                    if (index != i) {
-                        if (prev_node == nullptr) {
-                            m_buckets[i] = cur_node->next_hash();
-                        } else {
-                            prev_node->set_next_hashptr(cur_node->next_hash());
-                        }
-                        cur_node->set_next_hashptr(new_bucket);
-                        new_bucket = cur_node;
-                    }
-                    prev_node = cur_node;
-                    cur_node = next_node;
-                }
-            }
-            m_bucket_count = new_bucket_count;
-        }
-        node_type** do_allocate(size_t new_capacity)
-        {
-            if (!new_capacity)
-            {
-                return nullptr;
-            }
-            node_type** ret = std::allocator_traits<bucket_allocator_type>::allocate(m_alloc, new_capacity);
-            std::memset(ret, 0, new_capacity * sizeof(*ret));
-            return ret;
-        }
-        void do_deallocate(node_type** buckets, size_t capacity)
-        {
-            if (capacity) {
-                std::allocator_traits<bucket_allocator_type>::deallocate(m_alloc, buckets, capacity);
-            }
-        }
-
-
-    };
-
-    static constexpr size_t first_hashes_resize = 2048;
+    using hash_buckets = std::span<node_type*>;
 
     hash_buckets m_buckets;
     [[no_unique_address]] key_from_value_type m_key_from_value;
@@ -246,11 +61,10 @@ public:
 
     static constexpr bool requires_premodify_cache() { return true; }
 
-    hash_tree(const allocator_type& alloc = allocator_type{}) : m_buckets(alloc) {}
-    hash_tree(size_t bucket_count, const allocator_type& alloc) : m_buckets(alloc, bucket_count) {}
-    hash_tree(size_t bucket_count, const hasher_type& hasher, const allocator_type& alloc) : m_buckets(alloc, bucket_count), m_hasher(hasher) {}
+    hash_tree() = default;
+    hash_tree(const hasher_type& hasher) : m_hasher(hasher) {}
 
-    hash_tree(size_t bucket_count, key_from_value_type key_from_value ,hasher_type hasher, key_equal_type key_equal, const allocator_type& alloc) : m_buckets(alloc, bucket_count), m_key_from_value(key_from_value), m_hasher(hasher), m_pred(key_equal){}
+    hash_tree(key_from_value_type key_from_value ,hasher_type hasher, key_equal_type key_equal) : m_key_from_value(key_from_value), m_hasher(hasher), m_pred(key_equal){}
 
     hash_tree(const hash_tree& rhs) = delete;
     hash_tree(hash_tree&& rhs) = default;
@@ -263,7 +77,7 @@ public:
         }
         const size_t index = node->hash() % bucket_count;
 
-        node_type*& bucket = m_buckets.at(index);
+        node_type*& bucket = m_buckets[index];
         node_type* cur_node = bucket;
         node_type* prev_node = cur_node;
         while (cur_node) {
@@ -288,7 +102,7 @@ public:
             node->set_hash(hash);
         }
         const size_t index = node->hash() % m_buckets.size();
-        node_type*& bucket = m_buckets.at(index);
+        node_type*& bucket = m_buckets[index];
 
         node->set_next_hashptr(bucket);
         bucket = node;
@@ -300,7 +114,7 @@ public:
         const size_t hash = m_hasher(key);
 
         const size_t index = hash % m_buckets.size();
-        node_type*& bucket = m_buckets.at(index);
+        node_type*& bucket = m_buckets[index];
 
         if constexpr (unique_keys()) {
             node_type* curr = bucket;
@@ -327,7 +141,7 @@ public:
             return;
         }
         const size_t index = node->hash() % bucket_count;
-        const node_type* cur_node = m_buckets.at(index);
+        const node_type* cur_node = m_buckets[index];
         const node_type* prev_node = cur_node;
         while (cur_node) {
             if (cur_node == node) {
@@ -351,7 +165,7 @@ public:
             if (cache.m_prev) {
                 const_cast<node_type*>(cache.m_prev)->set_next_hashptr(node->next_hash());
             } else {
-                m_buckets.at(cache.m_index) = node->next_hash();
+                m_buckets[cache.m_index] = node->next_hash();
             }
             return true;
         }
@@ -361,7 +175,7 @@ public:
     void insert_node(node_type* node, const insert_hints& hints)
     {
         node->set_hash(hints.m_hash);
-        node_type*& bucket = m_buckets.at(hints.m_index);
+        node_type*& bucket = m_buckets[hints.m_index];
         node->set_next_hashptr(bucket);
         bucket = node;
     }
@@ -375,7 +189,7 @@ public:
         if (!bucket_count) {
             return nullptr;
         }
-        auto* node = m_buckets.at(hash % bucket_count);
+        auto* node = m_buckets[hash % bucket_count];
         while (node) {
             if (node->hash() == hash) {
                 if (m_pred(m_key_from_value(node->value()), hash_key)) {
@@ -387,17 +201,12 @@ public:
         return nullptr;
     }
 
-    void do_clear()
-    {
-        m_buckets.clear();
-    }
-
     class iterator
     {
         const node_type* m_node{};
-        const hash_buckets* m_buckets{nullptr};
+        const hash_tree* m_tree{nullptr};
 
-        iterator(const node_type* node, const hash_buckets* buckets) : m_node(node), m_buckets(buckets) {}
+        iterator(const node_type* node, const hash_tree* tree) : m_node(node), m_tree(tree) {}
         friend class hash_tree;
     public:
 
@@ -414,11 +223,11 @@ public:
         {
             const node_type* next = m_node->next_hash();
             if (!next) {
-                const size_t bucket_size = m_buckets->size();
+                const size_t bucket_size = m_tree->m_buckets.size();
                 size_t bucket = m_node->hash() % bucket_size;
                 bucket++;
                 for (; bucket < bucket_size; ++bucket) {
-                    next = m_buckets->at(bucket);
+                    next = m_tree->m_buckets[bucket];
                     if (next) {
                         break;
                     }
@@ -433,7 +242,7 @@ public:
         }
         iterator operator++(int)
         {
-            iterator copy(m_node, m_buckets);
+            iterator copy(m_node, m_tree);
             ++(*this);
             return copy;
         }
@@ -518,7 +327,7 @@ public:
 
     local_iterator begin(size_type n)
     {
-        return local_iterator{m_buckets.at(n)};
+        return local_iterator{m_buckets[n]};
     }
 
     local_iterator end(size_type)
@@ -528,7 +337,7 @@ public:
 
     const_local_iterator begin(size_type n) const
     {
-        return const_local_iterator{m_buckets.at(n)};
+        return const_local_iterator{m_buckets[n]};
     }
 
     const_local_iterator end(size_type) const
@@ -547,14 +356,14 @@ public:
     }
 
     template<typename CompatibleKey>
-    iterator lower_bound(const CompatibleKey& key) const
+    iterator lower_bound(const CompatibleKey&) const
     {
         //TODO: Fix insert to group equal values
         return end();
     }
 
     template<typename CompatibleKey>
-    iterator upper_bound(const CompatibleKey& key) const
+    iterator upper_bound(const CompatibleKey&) const
     {
         //TODO: Fix insert to group equal values
         return end();
@@ -590,7 +399,7 @@ public:
         if (!bucket_count) {
             return 0;
         }
-        auto* node = m_buckets.at(hash % bucket_count);
+        auto* node = m_buckets[hash % bucket_count];
         while (node) {
             if (node->hash() == hash) {
                 if (m_pred(m_key_from_value(node->value()), key)) {
@@ -605,10 +414,10 @@ public:
 
     void clear() noexcept
     {
-        m_buckets.clear();
+        m_buckets = {};
     }
 
-    void swap(hash_tree& rhs)
+    void swap(hash_tree&)
     {
         // TODO
     }
@@ -621,7 +430,7 @@ public:
         if (!bucket_count) {
             return false;
         }
-        auto* node = m_buckets.at(hash % bucket_count);
+        auto* node = m_buckets[hash % bucket_count];
         while (node) {
             if (node->hash() == hash) {
                 if (m_pred(m_key_from_value(node->value()), key)) {
@@ -642,8 +451,20 @@ public:
         return m_buckets.size();
     }
 
-    void rehash(size_type buckets) {
-        m_buckets.rehash(buckets);
+    void rehash(hash_buckets new_buckets)
+    {
+        for(size_t i = 0; i < m_buckets.size(); i++) {
+            node_type* cur_node = m_buckets[i];
+            while (cur_node) {
+                node_type* next_node = cur_node->next_hash();
+                const size_t index = cur_node->hash() % new_buckets.size();
+                node_type*& new_bucket = new_buckets[index];
+                cur_node->set_next_hashptr(new_bucket);
+                new_bucket = cur_node;
+                cur_node = next_node;
+            }
+        }
+        m_buckets = new_buckets;
     }
 
     hasher_type hash_function() const
@@ -654,11 +475,6 @@ public:
     key_equal_type key_eq() const
     {
         return m_pred;
-    }
-
-    [[nodiscard]] allocator_type get_allocator() const noexcept
-    {
-        return m_buckets.get_allocator();
     }
 
 protected:
@@ -675,7 +491,7 @@ protected:
 
     const_iterator make_iterator(const node_type* node) const
     {
-        return const_iterator(node, &m_buckets);
+        return const_iterator(node, this);
     }
 };
 

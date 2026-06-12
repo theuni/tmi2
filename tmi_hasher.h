@@ -52,7 +52,7 @@ public:
     using insert_return_type = detail::insert_return_type<iterator, node_handle>;
     using value_type = node_type::value_type;
     friend Parent;
-
+    using buckets_type = std::unique_ptr<node_type*[]>;
 private:
 
     using insert_hints = tree_type::insert_hints;
@@ -61,10 +61,11 @@ private:
 
     Parent& m_parent;
     float m_max_load_factor{0.8f};
+    buckets_type m_buckets;
 
-    tmi_hasher(Parent& parent, const allocator_type& alloc) : tree_type{alloc}, m_parent(parent) {}
+    tmi_hasher(Parent& parent, const allocator_type&) : m_parent(parent) {}
 
-    tmi_hasher(Parent& parent, const allocator_type& alloc, const ctor_args& args) : tree_type(std::get<0>(args), std::get<1>(args), std::get<2>(args), std::get<3>(args), alloc), m_parent(parent){}
+    tmi_hasher(Parent& parent, const allocator_type&, const ctor_args& args) : tree_type(std::get<0>(args), std::get<1>(args), std::get<2>(args), std::get<3>(args)), m_parent(parent) {}
 
     tmi_hasher(Parent& parent, const tmi_hasher& rhs) : tree_type(static_cast<tree_type&>(rhs)), m_parent(parent){}
     tmi_hasher(Parent& parent, tmi_hasher&& rhs) : tree_type(std::move(static_cast<tree_type&>(rhs))), m_parent(parent)
@@ -87,9 +88,9 @@ private:
         size_t buckets = tree_type::bucket_count();
 
         if (!buckets) {
-            tree_type::rehash(1);
+            rehash_impl(1);
         } else if (size() + 1 > buckets * max_load_factor()) {
-            tree_type::rehash(buckets * 2);
+            rehash_impl(buckets * 2);
         }
         return tree_type::preinsert_node(node, hints);
     }
@@ -112,6 +113,18 @@ private:
     void tmi_clear()
     {
         tree_type::clear();
+    }
+
+    void rehash_impl(size_t new_bucket_count)
+    {
+        auto new_buckets = allocate_buckets_impl(new_bucket_count);
+        tree_type::rehash(std::span<node_type*>{new_buckets.get(), new_bucket_count});
+        m_buckets = std::move(new_buckets);
+    }
+
+    static buckets_type allocate_buckets_impl(size_t new_capacity)
+    {
+        return std::make_unique<node_type*[]>(new_capacity);
     }
 
 public:
@@ -241,7 +254,7 @@ public:
     }
 
     void rehash(size_type buckets) {
-        tree_type::rehash(buckets);
+        rehash_impl(buckets);
     }
 
     void reserve(size_type count)

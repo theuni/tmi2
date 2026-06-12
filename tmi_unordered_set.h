@@ -67,14 +67,15 @@ public:
     using insert_return_type = std::conditional_t<Unique, tmi::detail::insert_return_type<iterator, node_type>, iterator>;
     using insert_result_type = std::conditional_t<Unique, std::pair<iterator, bool>, iterator>;
 
-    using buckets_type = std::unique_ptr<data_type[]>;
+    using buckets_type = std::unique_ptr<data_type*[]>;
 
     unordered_set_base()
     {
     }
 
-    explicit unordered_set_base(size_type n, const hasher& hf = hasher(), const key_equal& eql = key_equal(), const allocator_type& a = allocator_type()) : hash_table_type{n, identity<Key>{}, hf, eql, a}
+    explicit unordered_set_base(size_type n, const hasher& hf = hasher(), const key_equal& eql = key_equal(), const allocator_type& a = allocator_type()) : hash_table_type{identity<Key>{}, hf, eql}, m_alloc{a}
     {
+        rehash(n);
     }
 
     template <class InputIterator>
@@ -83,20 +84,22 @@ public:
         insert(f, l);
     }
 
-    explicit unordered_set_base(const allocator_type& a) : hash_table_type{a}
+    explicit unordered_set_base(const allocator_type& a) : m_alloc{a}
     {
     }
 
-    unordered_set_base(const unordered_set_base&)
+    unordered_set_base(const unordered_set_base& u) : hash_table_type{}
     {
+        insert(u.begin(), u.end());
     }
 
-    unordered_set_base(const unordered_set_base& u, const Allocator& a) : hash_table_type{u, a}
+    unordered_set_base(const unordered_set_base& u, const Allocator& a) : m_alloc{a}
     {
+        insert(u.begin(), u.end());
     }
 
     unordered_set_base(unordered_set_base&&) = default;
-    unordered_set_base(unordered_set_base&& u, const Allocator& a) : hash_table_type{u, a}
+    unordered_set_base(unordered_set_base&& u, const Allocator& a) : hash_table_type{std::move(u)}, m_alloc{a}
     {
     }
 
@@ -105,12 +108,14 @@ public:
         insert(il.begin(), il.end());
     }
 
-    unordered_set_base(size_type n, const allocator_type& a) : hash_table_type(n, a)
+    unordered_set_base(size_type n, const allocator_type& a) : m_alloc{a}
     {
+        rehash(n);
     }
 
-    unordered_set_base(size_type n, const hasher& hf, const allocator_type& a) : hash_table_type(n, hf, a)
+    unordered_set_base(size_type n, const hasher& hf, const allocator_type& a) : hash_table_type(hf), m_alloc{a}
     {
+        rehash(n);
     }
 
     template <class InputIterator>
@@ -172,7 +177,7 @@ public:
 
     size_type max_size() const noexcept
     {
-        return std::min<size_type>(std::allocator_traits<node_allocator_type>::max_size(hash_table_type::get_allocator()), std::numeric_limits<difference_type >::max());
+        return std::min<size_type>(std::allocator_traits<node_allocator_type>::max_size(m_alloc), std::numeric_limits<difference_type >::max());
     }
 
 
@@ -242,7 +247,7 @@ public:
     {
         data_type* node = hash_table_type::node_from_iterator(position);
         remove_node_impl(node);
-        return {hash_table_type::get_allocator(), node};
+        return {m_alloc, node};
     }
 
     node_type extract(const key_type& x)
@@ -346,7 +351,7 @@ public:
 
     [[nodiscard]] allocator_type get_allocator() const noexcept
     {
-        return hash_table_type::get_allocator();
+        return m_alloc;
     }
 
     [[nodiscard]] iterator find(const key_type& k)
@@ -465,8 +470,7 @@ public:
     }
 
     void rehash(size_type buckets) {
-        auto new_buckets{std::make_unique<data_type[]>(buckets)};
-        hash_table_type::rehash(buckets);
+        rehash_impl(buckets);
     }
 
     void reserve(size_type count)
@@ -502,9 +506,10 @@ public:
 
 private:
 
+    [[no_unique_address]] node_allocator_type m_alloc;
     size_type m_size{0};
     float m_max_load_factor{0.8f};
-    buckets_type m_buckets{};
+    buckets_type m_buckets;
 
     template<class S2>
     void merge_impl(S2&& source)
@@ -522,9 +527,8 @@ private:
     template <typename... Args>
     data_type* construct_impl(Args&&... args)
     {
-        node_allocator_type alloc = hash_table_type::get_allocator();
-        data_type* node = alloc.allocate(1);
-        return std::uninitialized_construct_using_allocator<data_type>(node, alloc, std::forward<Args>(args)...);
+        data_type* node = m_alloc.allocate(1);
+        return std::uninitialized_construct_using_allocator<data_type>(node, m_alloc, std::forward<Args>(args)...);
     }
 
     void remove_node_impl(data_type* node)
@@ -537,13 +541,11 @@ private:
     {
         typename hash_table_type::insert_hints hints;
         size_t buckets = bucket_count();
-
         if (!buckets) {
-            rehash(1);
+            rehash_impl(1);
         } else if (size() + 1 > buckets * max_load_factor()) {
-            rehash(buckets * 2);
+            rehash_impl(buckets * 2);
         }
-
         data_type* conflict = hash_table_type::preinsert_node(node, hints);
         if (conflict) {
             return std::make_pair(conflict, false);
@@ -553,11 +555,22 @@ private:
         return std::make_pair(node, true);
     }
 
+    void rehash_impl(size_t new_bucket_count)
+    {
+        auto new_buckets = allocate_buckets_impl(new_bucket_count);
+        hash_table_type::rehash(std::span<data_type*>{new_buckets.get(), new_bucket_count});
+        m_buckets = std::move(new_buckets);
+    }
+
     void destroy_impl(data_type* node)
     {
-        node_allocator_type alloc = hash_table_type::get_allocator();
-        std::allocator_traits<node_allocator_type>::destroy(alloc, node);
-        std::allocator_traits<node_allocator_type>::deallocate(alloc, node, 1);
+        std::allocator_traits<node_allocator_type>::destroy(m_alloc, node);
+        std::allocator_traits<node_allocator_type>::deallocate(m_alloc, node, 1);
+    }
+
+    static buckets_type allocate_buckets_impl(size_t new_capacity)
+    {
+        return std::make_unique<data_type*[]>(new_capacity);
     }
 };
 
