@@ -410,8 +410,8 @@ public:
     class iterator
     {
         const node_type* m_node{};
-        const node_type* m_root{};
-        iterator(const node_type* node, const node_type* root) : m_node(node), m_root(root){}
+        node_type* const* m_root{};
+        iterator(const node_type* node, node_type* const* root) : m_node(node), m_root(root){}
         friend wavl_tree;
     public:
         typedef const wavl_tree::value_type value_type;
@@ -443,8 +443,8 @@ public:
                     m_node = nullptr;
                 }
             } else {
-                assert(m_root);
-                m_node = tree_max(m_root);
+                assert(m_root && *m_root);
+                m_node = tree_max(*m_root);
             }
             return *this;
         }
@@ -682,7 +682,7 @@ protected:
 
     const_iterator make_iterator(const node_type* node) const
     {
-        return const_iterator(node, m_root);
+        return const_iterator(node, &m_root);
     }
     const node_type* node_from_iterator(const_iterator it) const
     {
