@@ -37,11 +37,12 @@ inline const bool is_transparent_v<Hash, std::void_t<typename Hash::is_transpare
 } // namespace detail
 
 template <class Key, bool Unique, class Hash, class KeyEqual, class Allocator>
-class unordered_set_base : private hash_tree<detail::set_data<Key>, identity<Key>, Hash, KeyEqual, Unique, Allocator>
+class unordered_set_base : private hash_tree<detail::set_data<Key>, identity<Key>, Hash, KeyEqual, Unique>
 {
-    using hash_table_type = hash_tree<detail::set_data<Key>, identity<Key>, Hash, KeyEqual, Unique, Allocator>;
+    using hash_table_type = hash_tree<detail::set_data<Key>, identity<Key>, Hash, KeyEqual, Unique>;
     using data_type = detail::set_data<Key>;
     using node_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<data_type>;
+    using bucket_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<data_type*>;
 
     template <class, bool, class, class, class>
     friend class unordered_set_base;
@@ -67,7 +68,7 @@ public:
     using insert_return_type = std::conditional_t<Unique, tmi::detail::insert_return_type<iterator, node_type>, iterator>;
     using insert_result_type = std::conditional_t<Unique, std::pair<iterator, bool>, iterator>;
 
-    using buckets_type = std::unique_ptr<data_type*[]>;
+    using buckets_type = std::vector<data_type*, bucket_allocator_type>;
 
     unordered_set_base()
     {
@@ -88,18 +89,18 @@ public:
     {
     }
 
-    unordered_set_base(const unordered_set_base& u) : hash_table_type{}
+    unordered_set_base(const unordered_set_base& u) : unordered_set_base(u, std::allocator_traits<allocator_type>::select_on_container_copy_construction(u.get_allocator()))
     {
-        insert(u.begin(), u.end());
     }
 
     unordered_set_base(const unordered_set_base& u, const Allocator& a) : m_alloc{a}
     {
+        rehash(u.bucket_count());
         insert(u.begin(), u.end());
     }
 
     unordered_set_base(unordered_set_base&&) = default;
-    unordered_set_base(unordered_set_base&& u, const Allocator& a) : hash_table_type{std::move(u)}, m_alloc{a}
+    unordered_set_base(unordered_set_base&& u, const Allocator& a) : hash_table_type{std::move(u)}, m_buckets{std::move(u.m_buckets)}, m_size(u.m_size), m_alloc{a}
     {
     }
 
@@ -510,7 +511,7 @@ private:
     [[no_unique_address]] node_allocator_type m_alloc;
     size_type m_size{0};
     float m_max_load_factor{0.8f};
-    buckets_type m_buckets;
+    buckets_type m_buckets{};
 
     template<class S2>
     void merge_impl(S2&& source)
@@ -558,8 +559,8 @@ private:
 
     void rehash_impl(size_t new_bucket_count)
     {
-        auto new_buckets = allocate_buckets_impl(new_bucket_count);
-        hash_table_type::rehash(std::span<data_type*>{new_buckets.get(), new_bucket_count});
+        buckets_type new_buckets(new_bucket_count, nullptr);
+        hash_table_type::rehash(new_buckets);
         m_buckets = std::move(new_buckets);
     }
 
@@ -567,11 +568,6 @@ private:
     {
         std::allocator_traits<node_allocator_type>::destroy(m_alloc, node);
         std::allocator_traits<node_allocator_type>::deallocate(m_alloc, node, 1);
-    }
-
-    static buckets_type allocate_buckets_impl(size_t new_capacity)
-    {
-        return std::make_unique<data_type*[]>(new_capacity);
     }
 };
 

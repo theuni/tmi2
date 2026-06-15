@@ -55,9 +55,9 @@ private:
 
     Parent& m_parent;
 
-    tmi_comparator(Parent& parent, const allocator_type&) : m_parent(parent){}
+    tmi_comparator(Parent& parent) : m_parent(parent){}
 
-    tmi_comparator(Parent& parent, const allocator_type&, const ctor_args& args) : tree_type{std::get<0>(args), std::get<1>(args)}, m_parent(parent){}
+    tmi_comparator(Parent& parent, const ctor_args& args) : tree_type{std::get<0>(args), std::get<1>(args)}, m_parent(parent){}
     tmi_comparator(Parent& parent, const tmi_comparator& rhs) : tree_type{static_cast<tree_type&>(rhs)}, m_parent(parent){}
     tmi_comparator(Parent& parent, tmi_comparator&& rhs) : tree_type{static_cast<tree_type&>(std::move(rhs))}, m_parent(parent){}
 

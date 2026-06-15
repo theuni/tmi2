@@ -17,26 +17,27 @@
 #include <limits>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 namespace tmi {
 
 namespace detail {
-template <typename IndexedNode, typename Hasher, typename Allocator>
+template <typename IndexedNode, typename Hasher>
 struct tmi_hasher_helper
 {
     using node_type = IndexedNode;
     using key_from_value = typename Hasher::key_from_value_type;
     using hasher = typename Hasher::hasher_type;
     using key_equal = typename Hasher::pred_type;
-    using tree_type = hash_tree<node_type, key_from_value, hasher, key_equal, Hasher::is_hashed_unique(), Allocator>;
+    using tree_type = hash_tree<node_type, key_from_value, hasher, key_equal, Hasher::is_hashed_unique()>;
 };
 } // namespace detail
 
 template <typename IndexedNode, typename Hasher, typename Parent, typename Allocator>
-class tmi_hasher : private detail::tmi_hasher_helper<IndexedNode, Hasher, Allocator>::tree_type
+class tmi_hasher : private detail::tmi_hasher_helper<IndexedNode, Hasher>::tree_type
 {
 public:
-    using helper_type = detail::tmi_hasher_helper<IndexedNode, Hasher, Allocator>;
+    using helper_type = detail::tmi_hasher_helper<IndexedNode, Hasher>;
     using node_type = helper_type::node_type;
     using key_from_value = helper_type::key_from_value;
     using key_type = key_from_value::result_type;
@@ -46,13 +47,14 @@ public:
     using size_type = size_t;
     using ctor_args = std::tuple<size_type,key_from_value,hasher,key_equal>;
     using allocator_type = Allocator;
+    using bucket_allocator_type = typename std::allocator_traits<allocator_type>::template rebind_alloc<node_type*>;
     using node_handle = detail::node_handle<Allocator, node_type>;
     using iterator = tree_type::iterator;
     using const_iterator = tree_type::const_iterator;
     using insert_return_type = detail::insert_return_type<iterator, node_handle>;
     using value_type = node_type::value_type;
     friend Parent;
-    using buckets_type = std::unique_ptr<node_type*[]>;
+    using buckets_type = std::vector<node_type*, bucket_allocator_type>;
 private:
 
     using insert_hints = tree_type::insert_hints;
@@ -61,11 +63,11 @@ private:
 
     Parent& m_parent;
     float m_max_load_factor{0.8f};
-    buckets_type m_buckets;
+    buckets_type m_buckets{};
 
-    tmi_hasher(Parent& parent, const allocator_type&) : m_parent(parent) {}
+    tmi_hasher(Parent& parent) : m_parent(parent) {}
 
-    tmi_hasher(Parent& parent, const allocator_type&, const ctor_args& args) : tree_type(std::get<0>(args), std::get<1>(args), std::get<2>(args), std::get<3>(args)), m_parent(parent) {}
+    tmi_hasher(Parent& parent, const ctor_args& args) : tree_type(std::get<0>(args), std::get<1>(args), std::get<2>(args), std::get<3>(args)), m_parent(parent) {}
 
     tmi_hasher(Parent& parent, const tmi_hasher& rhs) : tree_type(static_cast<tree_type&>(rhs)), m_parent(parent){}
     tmi_hasher(Parent& parent, tmi_hasher&& rhs) : tree_type(std::move(static_cast<tree_type&>(rhs))), m_parent(parent)
@@ -117,14 +119,9 @@ private:
 
     void rehash_impl(size_t new_bucket_count)
     {
-        auto new_buckets = allocate_buckets_impl(new_bucket_count);
-        tree_type::rehash(std::span<node_type*>{new_buckets.get(), new_bucket_count});
+        buckets_type new_buckets(new_bucket_count, nullptr);
+        tree_type::rehash(new_buckets);
         m_buckets = std::move(new_buckets);
-    }
-
-    static buckets_type allocate_buckets_impl(size_t new_capacity)
-    {
-        return std::make_unique<node_type*[]>(new_capacity);
     }
 
 public:

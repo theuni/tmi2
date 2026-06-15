@@ -19,7 +19,7 @@
 
 namespace tmi {
 
-template <typename Node, typename KeyFromValue, typename Hash, typename KeyEqual, bool Unique, typename Allocator>
+template <typename Node, typename KeyFromValue, typename Hash, typename KeyEqual, bool Unique>
 class hash_tree
 {
 public:
@@ -32,8 +32,6 @@ public:
     using hasher_type = Hash;
     using key_equal_type = KeyEqual;
     using ctor_args = std::tuple<size_type,key_from_value_type,hasher_type,key_equal_type>;
-    using allocator_type = Allocator;
-    using node_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<node_type>;
     using value_type = node_type::value_type;
     using difference_type = std::ptrdiff_t;
 
