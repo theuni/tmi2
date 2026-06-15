@@ -443,7 +443,13 @@ public:
 
     size_type bucket_size(size_type n) const
     {
-        return std::distance(begin(n), end(n));
+        size_type ret = 0;
+        const node_type* node = m_buckets[n];
+        while(node) {
+            ret++;
+            node = node->next_hash();
+        }
+        return ret;
     }
 
     size_type bucket_count() const

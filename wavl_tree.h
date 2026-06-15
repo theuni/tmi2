@@ -494,22 +494,22 @@ public:
 
     reverse_iterator rbegin() noexcept
     {
-        return std::reverse_iterator(begin());
+        return reverse_iterator(begin());
     }
 
     const_reverse_iterator rbegin() const noexcept
     {
-        return std::reverse_iterator(begin());
+        return const_reverse_iterator(begin());
     }
 
     reverse_iterator rend() noexcept
     {
-        return std::reverse_iterator(end());
+        return reverse_iterator(end());
     }
 
     const_reverse_iterator rend() const noexcept
     {
-        return std::reverse_iterator(end());
+        return const_reverse_iterator(end());
     }
 
     const_iterator cbegin() const noexcept

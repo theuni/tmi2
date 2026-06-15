@@ -475,7 +475,7 @@ public:
 
     void reserve(size_type count)
     {
-        rehash(std::ceil(count / max_load_factor()));
+        rehash(static_cast<size_type>(std::ceil(static_cast<float>(count) / max_load_factor())));
     }
 
     using hash_table_type::bucket_size;
@@ -488,7 +488,8 @@ public:
 
     float load_factor() const
     {
-        return size() / hash_table_type::bucket_count();
+        size_type bucket_count = hash_table_type::bucket_count();
+        return bucket_count ? static_cast<float>(size()) / static_cast<float>(bucket_count) : 0.0f;
     }
 
     float max_load_factor() const
@@ -543,7 +544,7 @@ private:
         size_t buckets = bucket_count();
         if (!buckets) {
             rehash_impl(1);
-        } else if (size() + 1 > buckets * max_load_factor()) {
+        } else if (size() + 1 > static_cast<size_type>(static_cast<float>(buckets) * max_load_factor())) {
             rehash_impl(buckets * 2);
         }
         data_type* conflict = hash_table_type::preinsert_node(node, hints);

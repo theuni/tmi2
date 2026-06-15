@@ -89,7 +89,7 @@ private:
 
         if (!buckets) {
             rehash_impl(1);
-        } else if (size() + 1 > buckets * max_load_factor()) {
+        } else if (size() + 1 > static_cast<size_type>(static_cast<float>(buckets) * max_load_factor())) {
             rehash_impl(buckets * 2);
         }
         return tree_type::preinsert_node(node, hints);
@@ -264,7 +264,8 @@ public:
 
     float load_factor() const
     {
-        return size() / tree_type::bucket_count();
+        auto bucket_count = tree_type::bucket_count();
+        return bucket_count ? size() / bucket_count : 0.0f;
     }
 
     float max_load_factor() const

@@ -5,6 +5,7 @@
 #include <tmi.h>
 
 #include <test/ordered_unique.h>
+#include <test/stdset.h>
 
 #include <tmiset.h>
 #include <set>
@@ -12,6 +13,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
+#pragma GCC diagnostic ignored "-Wunused-variable"
 
 namespace {
 

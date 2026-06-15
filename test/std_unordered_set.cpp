@@ -5,8 +5,10 @@
 #include <tmi.h>
 
 #include <test/ordered_unique.h>
+#include <test/std_unordered_set.h>
 
 #include <tmi_unordered_set.h>
+
 #include <set>
 
 #pragma GCC diagnostic push
