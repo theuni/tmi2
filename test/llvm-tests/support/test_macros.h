@@ -250,7 +250,7 @@
 #endif
 
 /* Macros for testing libc++ specific behavior and extensions */
-#if defined(_LIBCPP_VERSION) && defined(TEST_LIBCPP_BEHAVIOR)
+#if defined(_LIBCPP_VERSION) && !defined(IGNORE_LIBCPP_SPECIFIC_BEHAVIOR)
 #define LIBCPP_ASSERT(...) assert(__VA_ARGS__)
 #define LIBCPP_STATIC_ASSERT(...) static_assert(__VA_ARGS__)
 #define LIBCPP_ASSERT_NOEXCEPT(...) ASSERT_NOEXCEPT(__VA_ARGS__)
