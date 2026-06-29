@@ -10,6 +10,7 @@
 #include <tmi_unordered_set.h>
 
 #include <set>
+#include <string>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
@@ -103,11 +104,11 @@ void unordered_set_test(Args&&... ctor_args)
 
     { unordered_set_type y(cs); }
 
-//    { unordered_set_type y(cs, alloc); }
+    { unordered_set_type y(cs, alloc); }
 
     { unordered_set_type y(std::move(s)); }
 
-//    { unordered_set_type y(std::move(s), alloc); }
+    { unordered_set_type y(std::move(s), alloc); }
 
 
     { unordered_set_type y(std::initializer_list<T>{}); }
@@ -164,10 +165,6 @@ void unordered_set_test(Args&&... ctor_args)
     { cit = cs.find(ck); }
     { size_ret = cs.count(ck); }
     { bool_ret = cs.contains(ck); }
-    { it = s.lower_bound(ck); }
-    { cit = cs.lower_bound(ck); }
-    { it = s.upper_bound(ck); }
-    { cit = cs.upper_bound(ck); }
     { iter_pair_ret = s.equal_range(ck); }
     { const_iter_pair_ret = cs.equal_range(ck); }
     { size_type ret = cs.bucket_size(0); }
@@ -182,11 +179,7 @@ void unordered_set_test(Args&&... ctor_args)
     { swap(s, s); }
     { size_ret = erase_if(s, [](const T&){return true;}); }
     { bool_ret = cs == cs; }
-    { bool_ret = cs < cs; }
     { bool_ret = cs != cs; }
-    { bool_ret = cs > cs; }
-    { bool_ret = cs >= cs; }
-    { bool_ret = cs <= cs; }
 
     // deduction guides are a nightmare to implement
     //
@@ -207,9 +200,9 @@ struct StringHash {
     }
 };
 
-    using unordered_set_type = tmi::unordered_set<std::string, StringHash, std::equal_to<>>;
+    using unordered_set_type = tmi::unordered_set<std::string, StringHash, std::equal_to<>, std::allocator<std::string>>;
 
-    using size_type = unordered_set_type::size_type;
+    using size_type = size_t;
     using iterator = unordered_set_type::iterator;
     using const_iterator = unordered_set_type::const_iterator;
 
@@ -221,18 +214,16 @@ struct StringHash {
     std::pair<const_iterator, const_iterator> const_iter_pair_ret;
     std::string_view ck = "test";
 
-    unordered_set_type s;
+    unordered_set_type s(std::allocator<int>{});
     const unordered_set_type cs;
     { it = s.find(ck); }
     { cit = cs.find(ck); }
     { size_ret = cs.count(ck); }
     { bool_ret = cs.contains(ck); }
-    { it = s.lower_bound(ck); }
-    { cit = cs.lower_bound(ck); }
-    { it = s.upper_bound(ck); }
-    { cit = cs.upper_bound(ck); }
     { iter_pair_ret = s.equal_range(ck); }
     { const_iter_pair_ret = cs.equal_range(ck); }
+    
+    
 }
 
 void test_std_unordered_iterator_validity()

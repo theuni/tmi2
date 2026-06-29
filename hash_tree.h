@@ -19,12 +19,10 @@
 
 namespace tmi {
 
-template <typename Node, typename KeyFromValue, typename Hash, typename KeyEqual, bool Unique>
+template <typename Node, typename Value, typename KeyFromValue, typename Hash, typename KeyEqual, bool Unique>
 class hash_tree
 {
 public:
-    class iterator;
-
     using node_type = Node;
     using size_type = std::size_t;
     using key_from_value_type = KeyFromValue;
@@ -32,24 +30,25 @@ public:
     using hasher_type = Hash;
     using key_equal_type = KeyEqual;
     using ctor_args = std::tuple<size_type,key_from_value_type,hasher_type,key_equal_type>;
-    using value_type = node_type::value_type;
+    using value_type = Value;
     using difference_type = std::ptrdiff_t;
 
 private:
 
     using hash_buckets = std::span<node_type*>;
 
-    hash_buckets m_buckets;
+    hash_buckets m_buckets{};
     [[no_unique_address]] key_from_value_type m_key_from_value;
     [[no_unique_address]] hasher_type m_hasher;
     [[no_unique_address]] key_equal_type m_pred;
 
 public:
     static constexpr bool unique_keys() { return Unique; }
-
+    static_assert(std::is_copy_constructible_v<key_equal_type>);
+    static_assert(std::is_copy_constructible_v<hasher_type>);
     struct insert_hints {
         size_t m_hash{0};
-        size_t m_index{0};
+        node_type* m_prev{nullptr};
     };
 
     struct premodify_cache {
@@ -64,16 +63,37 @@ public:
 
     hash_tree(key_from_value_type key_from_value ,hasher_type hasher, key_equal_type key_equal) : m_key_from_value(key_from_value), m_hasher(hasher), m_pred(key_equal){}
 
-    hash_tree(const hash_tree& rhs) = delete;
-    hash_tree(hash_tree&& rhs) = default;
+    hash_tree(const hash_tree& rhs) : m_key_from_value{rhs.m_key_from_value}, m_hasher{rhs.m_hasher}, m_pred{rhs.m_pred} {}
+    hash_tree& operator=(const hash_tree& rhs)
+    {
+        m_key_from_value = rhs.m_key_from_value;
+        m_hasher = rhs.m_hasher;
+        m_pred = rhs.m_pred;
+        return *this;
+    }
+    hash_tree& operator=(hash_tree&& rhs)
+    {
+        m_key_from_value = rhs.m_key_from_value;
+        m_hasher = rhs.m_hasher;
+        m_pred = rhs.m_pred;
+        return *this;
+    }
+
+    hash_tree(hash_tree&& rhs) : m_buckets{std::move(rhs.m_buckets)}, m_key_from_value{std::move(rhs.m_key_from_value)}, m_hasher{std::move(rhs.m_hasher)}, m_pred{std::move(rhs.m_pred)}
+    {
+        rhs.m_buckets = {};
+    }
 
     void remove_node(const node_type* node)
     {
+        if (!node) {
+            return;
+        }
         const size_t bucket_count = m_buckets.size();
         if (!bucket_count) {
             return;
         }
-        const size_t index = node->hash() % bucket_count;
+        const size_t index = hash_to_bucket(node->hash(), bucket_count);
 
         node_type*& bucket = m_buckets[index];
         node_type* cur_node = bucket;
@@ -99,36 +119,37 @@ public:
             const size_t hash = m_hasher(m_key_from_value(node->value()));
             node->set_hash(hash);
         }
-        const size_t index = node->hash() % m_buckets.size();
+        const size_t index = hash_to_bucket(node->hash(), m_buckets.size());
         node_type*& bucket = m_buckets[index];
 
         node->set_next_hashptr(bucket);
         bucket = node;
     }
 
-    node_type* preinsert_node(const node_type* node, insert_hints& hints)
+    template <typename CompatibleKey>
+    node_type* preinsert_node(const CompatibleKey& val, insert_hints& hints)
     {
-        const auto& key = m_key_from_value(node->value());
+        const auto& key = m_key_from_value(val);
         const size_t hash = m_hasher(key);
 
-        const size_t index = hash % m_buckets.size();
-        node_type*& bucket = m_buckets[index];
+        const size_t index = hash_to_bucket(hash, m_buckets.size());
+        node_type* node = m_buckets[index];
 
-        if constexpr (unique_keys()) {
-            node_type* curr = bucket;
-            node_type* prev = curr;
-            while (curr) {
-                if (curr->hash() == hash) {
-                    if (m_pred(m_key_from_value(curr->value()), key)) {
-                        return curr;
+        hints.m_hash = hash;
+        hints.m_prev = nullptr;
+        while (node) {
+            hints.m_prev = node;
+            if (node->hash() == hash) {
+                if (m_pred(m_key_from_value(node->value()), key)) {
+                    if constexpr (unique_keys()) {
+                        return node;
+                    } else {
+                        return nullptr;
                     }
                 }
-                prev = curr;
-                curr = curr->next_hash();
             }
+            node = node->next_hash();
         }
-        hints.m_index = index;
-        hints.m_hash = hash;
         return nullptr;
     }
 
@@ -138,7 +159,7 @@ public:
         if (!bucket_count) {
             return;
         }
-        const size_t index = node->hash() % bucket_count;
+        const size_t index = hash_to_bucket(node->hash(), bucket_count);
         const node_type* cur_node = m_buckets[index];
         const node_type* prev_node = cur_node;
         while (cur_node) {
@@ -173,9 +194,15 @@ public:
     void insert_node(node_type* node, const insert_hints& hints)
     {
         node->set_hash(hints.m_hash);
-        node_type*& bucket = m_buckets[hints.m_index];
-        node->set_next_hashptr(bucket);
-        bucket = node;
+        if(!hints.m_prev) {
+            const size_t bucket_count = m_buckets.size();
+            const size_t index = hash_to_bucket(node->hash(), bucket_count);
+            node->set_next_hashptr(nullptr);
+            m_buckets[index] = node;
+        } else {
+            node->set_next_hashptr(hints.m_prev->next_hash());
+            hints.m_prev->set_next_hashptr(node);
+        }
     }
 
 
@@ -187,7 +214,7 @@ public:
         if (!bucket_count) {
             return nullptr;
         }
-        auto* node = m_buckets[hash % bucket_count];
+        auto* node = m_buckets[hash_to_bucket(hash, bucket_count)];
         while (node) {
             if (node->hash() == hash) {
                 if (m_pred(m_key_from_value(node->value()), hash_key)) {
@@ -208,7 +235,7 @@ public:
         friend class hash_tree;
     public:
 
-        typedef const hash_tree::value_type value_type;
+        typedef const Value value_type;
         typedef const value_type* pointer;
         typedef const value_type& reference;
         using difference_type = std::ptrdiff_t;
@@ -220,22 +247,17 @@ public:
         iterator& operator++()
         {
             const node_type* next = m_node->next_hash();
+            const size_t bucket_count = m_tree->m_buckets.size();
+            size_t bucket_start = hash_to_bucket(m_node->hash(), bucket_count);
             if (!next) {
-                const size_t bucket_size = m_tree->m_buckets.size();
-                size_t bucket = m_node->hash() % bucket_size;
-                bucket++;
-                for (; bucket < bucket_size; ++bucket) {
+                for (size_t bucket = bucket_start + 1; bucket < bucket_count; ++bucket) {
                     next = m_tree->m_buckets[bucket];
                     if (next) {
                         break;
                     }
                 }
             }
-            if (next == nullptr) {
-                m_node = nullptr;
-            } else {
-                m_node = next;
-            }
+            m_node = next;
             return *this;
         }
         iterator operator++(int)
@@ -256,7 +278,7 @@ public:
         friend class hash_tree;
     public:
 
-        typedef const hash_tree::value_type value_type;
+        typedef const Value value_type;
         typedef const value_type* pointer;
         typedef const value_type& reference;
         using difference_type = std::ptrdiff_t;
@@ -354,23 +376,28 @@ public:
     }
 
     template<typename CompatibleKey>
-    iterator lower_bound(const CompatibleKey&) const
-    {
-        //TODO: Fix insert to group equal values
-        return end();
-    }
-
-    template<typename CompatibleKey>
-    iterator upper_bound(const CompatibleKey&) const
-    {
-        //TODO: Fix insert to group equal values
-        return end();
-    }
-
-    template<typename CompatibleKey>
     std::pair<iterator, iterator> equal_range( const CompatibleKey& key) const
     {
-        return { lower_bound(key), upper_bound(key) };
+        const size_t hash = m_hasher(key);
+        const size_t bucket_count = m_buckets.size();
+        auto* node = m_buckets[hash_to_bucket(hash, bucket_count)];
+        while (node) {
+            if((node->hash() == hash) && m_pred(m_key_from_value(node->value()), key)) {
+                break;
+            }
+            node = node->next_hash();
+        }
+        if (!node) return {end(), end()};
+        iterator first = make_iterator(node);
+        node_type* last = node;
+
+        if constexpr (!unique_keys()) {
+            while (node && (node->hash() == hash) && m_pred(m_key_from_value(node->value()), key)) {
+                last = node;
+                node = node->next_hash();
+            }
+        }
+        return {first, ++make_iterator(last)};
     }
 
     template <typename CompatibleKey>
@@ -397,7 +424,7 @@ public:
         if (!bucket_count) {
             return 0;
         }
-        auto* node = m_buckets[hash % bucket_count];
+        auto* node = m_buckets[hash_to_bucket(hash, bucket_count)];
         while (node) {
             if (node->hash() == hash) {
                 if (m_pred(m_key_from_value(node->value()), key)) {
@@ -415,9 +442,12 @@ public:
         m_buckets = {};
     }
 
-    void swap(hash_tree&)
+    void swap(hash_tree& rhs) noexcept(std::is_nothrow_swappable_v<hasher_type> && std::is_nothrow_swappable_v<key_equal_type> && std::is_nothrow_swappable_v<key_from_value_type>)
     {
-        // TODO
+        using std::swap;
+        swap(m_key_from_value, rhs.m_key_from_value);
+        swap(m_hasher, rhs.m_hasher);
+        swap(m_pred, rhs.m_pred);
     }
 
     template <typename CompatibleKey>
@@ -428,13 +458,14 @@ public:
         if (!bucket_count) {
             return false;
         }
-        auto* node = m_buckets[hash % bucket_count];
+        auto* node = m_buckets[hash_to_bucket(hash, bucket_count)];
         while (node) {
             if (node->hash() == hash) {
                 if (m_pred(m_key_from_value(node->value()), key)) {
                     return true;
                 }
             }
+            node = node->next_hash();
         }
         return false;
     }
@@ -455,20 +486,33 @@ public:
         return m_buckets.size();
     }
 
+    template <typename CompatibleKey>
+    size_type bucket( const CompatibleKey& key ) const
+    {
+        const size_t hash = m_hasher(key);
+        const size_t bucket_count = m_buckets.size();
+        return hash_to_bucket(hash, bucket_count);
+    }
+
+    void set_buckets(hash_buckets new_buckets)
+    {
+        m_buckets = new_buckets;
+    }
+
     void rehash(hash_buckets new_buckets)
     {
         for(size_t i = 0; i < m_buckets.size(); i++) {
             node_type* cur_node = m_buckets[i];
             while (cur_node) {
                 node_type* next_node = cur_node->next_hash();
-                const size_t index = cur_node->hash() % new_buckets.size();
+                const size_t index = hash_to_bucket(cur_node->hash(), new_buckets.size());
                 node_type*& new_bucket = new_buckets[index];
                 cur_node->set_next_hashptr(new_bucket);
                 new_bucket = cur_node;
                 cur_node = next_node;
             }
         }
-        m_buckets = new_buckets;
+        set_buckets(new_buckets);
     }
 
     hasher_type hash_function() const
@@ -497,7 +541,32 @@ protected:
     {
         return const_iterator(node, this);
     }
+
+    static constexpr size_type hash_to_bucket(size_type hash, size_type bucket_count)
+    {
+        // This is safe if bucket counts are always POT. If they're prime
+        // instead, which is safer for bad hash functions, this should be a
+        // modulo.
+        return hash & (bucket_count - 1);
+    }
+
+    static constexpr size_type increase_bucket_count(size_type from, size_type new_minimum)
+    {
+        size_type new_bucket_count = std::max(new_minimum, size_type{1});
+        new_bucket_count = std::max(new_bucket_count, from);
+        if (new_minimum > 1) {
+            new_bucket_count = std::bit_ceil(new_bucket_count);
+        }
+        return new_bucket_count;
+    }
+
 };
+
+template <typename Node, typename Value, typename KeyFromValue, typename Hash, typename KeyEqual, bool Unique>
+void swap(hash_tree<Node, Value, KeyFromValue, Hash, KeyEqual, Unique>& x, hash_tree<Node, Value, KeyFromValue, Hash, KeyEqual, Unique>& y) noexcept(noexcept(x.swap(y)))
+{
+    x.swap(y);
+}
 
 } // namespace tmi
 
