@@ -1,0 +1,16 @@
+#ifndef _TMI_UNORDERED_SET
+#define _TMI_UNORDERED_SET
+
+#if 1
+#include <tmi_unordered_set.h>
+namespace std
+{
+    using namespace tmi;
+    using tmi::erase_if;
+    using tmi::swap;
+    using tmi::operator==;
+}
+#else
+#include_next <unordered_set>
+#endif
+#endif // _TMI_UNORDERED_SET
