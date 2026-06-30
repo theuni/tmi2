@@ -50,16 +50,14 @@ int main(int, char**) {
         C;
     static_assert(std::is_nothrow_destructible<C>::value, "");
   }
-#if defined(_LIBCPP_VERSION)
   {
     typedef std::unordered_multiset<MoveOnly, some_hash<MoveOnly>> C;
-    static_assert(!std::is_nothrow_destructible<C>::value, "");
+    LIBCPP_STATIC_ASSERT(!std::is_nothrow_destructible<C>::value, "");
   }
   {
     typedef std::unordered_multiset<MoveOnly, std::hash<MoveOnly>, some_comp<MoveOnly>> C;
-    static_assert(!std::is_nothrow_destructible<C>::value, "");
+    LIBCPP_STATIC_ASSERT(!std::is_nothrow_destructible<C>::value, "");
   }
-#endif // _LIBCPP_VERSION
 
   return 0;
 }
