@@ -3,5 +3,4 @@ target_compile_definitions(llvm_test_interface INTERFACE IGNORE_LIBCPP_SPECIFIC_
 target_include_directories(llvm_test_interface INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/support)
 target_link_libraries(llvm_test_interface INTERFACE common_interface)
 
-add_subdirectory(std/containers/unord/unord.set)
-add_subdirectory(std/containers/unord/unord.multiset)
+add_subdirectory(std/containers/)

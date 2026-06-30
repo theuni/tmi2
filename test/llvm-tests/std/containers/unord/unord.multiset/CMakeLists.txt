@@ -64,6 +64,11 @@ set (unordered_multiset_compile_fail_sources
     local_iterators.compile.fail.cpp
 )
 
+set_source_files_properties(insert_range.pass.cpp
+    PROPERTIES
+    COMPILE_OPTIONS "-Wno-missing-field-initializers"
+)
+
 foreach(source_file IN LISTS unordered_multiset_compile_fail_sources)
     try_compile(result_var SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/${source_file}" NO_CACHE
         OUTPUT_VARIABLE compile_output
@@ -80,7 +85,7 @@ target_link_libraries(unordered_multiset_compile PRIVATE llvm_test_interface)
 
 foreach(source_file IN LISTS unordered_multiset_sources)
     cmake_path(REMOVE_EXTENSION source_file LAST_ONLY OUTPUT_VARIABLE target_name)
-    string(PREPEND target_name "multiset.")
+    string(PREPEND target_name "unord.multiset.")
     add_executable("${target_name}" "${source_file}")
     target_link_libraries(${target_name} PRIVATE llvm_test_interface)
     add_test(NAME ${target_name} COMMAND ${target_name})
