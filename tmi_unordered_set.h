@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef TMISET_H_
-#define TMISET_H_
+#ifndef TMI_UNORDERED_SET_H_
+#define TMI_UNORDERED_SET_H_
 
 #include <hash_tree.h>
 #include <tmi_index.h>
@@ -902,4 +902,4 @@ namespace detail
 #include <test/std_unordered_set.cpp>
 #endif
 
-#endif // TMISET_H_
+#endif // TMI_UNORDERED_SET_H_
