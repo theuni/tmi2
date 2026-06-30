@@ -9,10 +9,11 @@
 #include <cstddef>
 #include <iterator>
 #include <utility>
+#include <memory>
 
 namespace tmi {
 
-template <typename Node, typename KeyFromValue, typename Comparator, bool Unique>
+template <typename Node, typename Value, typename KeyFromValue, typename Comparator, typename Allocator, bool Unique>
 class wavl_tree
 {
 public:
@@ -20,9 +21,16 @@ public:
     using key_from_value_type = KeyFromValue;
     using key_compare_type = Comparator;
     using key_type = typename key_from_value_type::result_type;
-    using value_type = node_type::value_type;
-    using size_type = std::size_t;
-    using difference_type = std::ptrdiff_t;
+    using value_type = Value;
+
+    using allocator_type = Allocator;
+    using reference = value_type&;
+    using const_reference = const value_type&;
+    using size_type = std::allocator_traits<allocator_type>::size_type;
+    using difference_type = std::allocator_traits<allocator_type>::difference_type;
+    using pointer = std::allocator_traits<allocator_type>::pointer;
+    using const_pointer = std::allocator_traits<allocator_type>::const_pointer;
+
     static constexpr bool unique_keys() { return Unique; }
 
     struct insert_hints {
@@ -277,9 +285,12 @@ private:
 #endif
 
 public:
-    wavl_tree(key_from_value_type key_from_value = {}, key_compare_type comparator = {}) : m_key_from_value{std::move(key_from_value)}, m_comparator(std::move(comparator)) {}
+    wavl_tree(key_from_value_type key_from_value, key_compare_type comparator) : m_key_from_value{std::move(key_from_value)}, m_comparator(std::move(comparator)) {}
     wavl_tree(const wavl_tree& rhs)  = delete;
     wavl_tree(wavl_tree&& rhs) = default;
+    wavl_tree() = default;
+
+    wavl_tree& operator=(wavl_tree&& rhs) noexcept(std::is_nothrow_move_assignable_v<key_from_value_type> && std::is_nothrow_move_assignable_v<key_compare_type>) = default;
 
     void remove_node(node_type* node)
     {
@@ -307,11 +318,12 @@ public:
         insert_node(node, hints);
     }
 
-    node_type* preinsert_node(const node_type* node, insert_hints& hints)
+    template <typename CompatibleKey>
+    node_type* preinsert_node(const CompatibleKey& val, insert_hints& hints)
     {
         node_type* parent = nullptr;
         node_type* curr = m_root;
-        const auto& key = m_key_from_value(node->value());
+        const auto& key = m_key_from_value(val);
 
         bool inserted_left = false;
         while (curr != nullptr) {
@@ -390,7 +402,7 @@ public:
         return false;
     }
 
-    void swap(wavl_tree& rhs)
+    void swap(wavl_tree& rhs) noexcept(std::is_nothrow_swappable_v<key_compare_type> && std::is_nothrow_swappable_v<key_from_value_type>)
     {
         auto temp_root = m_root;
         m_root = rhs.m_root;
@@ -414,15 +426,15 @@ public:
         iterator(const node_type* node, node_type* const* root) : m_node(node), m_root(root){}
         friend wavl_tree;
     public:
-        typedef const wavl_tree::value_type value_type;
-        typedef const value_type* pointer;
-        typedef const value_type& reference;
-        typedef std::ptrdiff_t difference_type;
-        using iterator_category = std::bidirectional_iterator_tag;
+        using value_type = wavl_tree::value_type;
+        using pointer = wavl_tree::const_pointer;
+        using reference = wavl_tree::const_reference;
+        using difference_type = wavl_tree::difference_type;
         using element_type = const value_type;
+        using iterator_category = std::bidirectional_iterator_tag;
         iterator() = default;
         reference operator*() const { return m_node->value(); }
-        pointer operator->() const { return &m_node->value(); }
+        pointer operator->() const { return std::pointer_traits<pointer>::pointer_to(m_node->value()); }
         iterator& operator++()
         {
             const node_type* next = tree_next(m_node);
@@ -696,6 +708,12 @@ protected:
 
 
 };
+
+template <typename Node, typename Value, typename KeyFromValue, typename Comparator, typename Allocator, bool Unique>
+void swap(wavl_tree<Node, Value, KeyFromValue, Comparator, Allocator, Unique>& x, wavl_tree<Node, Value, KeyFromValue, Comparator, Allocator, Unique>& y) noexcept(noexcept(x.swap(y)))
+{
+    x.swap(y);
+}
 
 } // namespace tmi
 

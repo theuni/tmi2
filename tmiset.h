@@ -28,24 +28,20 @@ namespace detail
 template <typename Key>
 class set_data;
 
-template <class Comparator, class = void>
-inline const bool is_transparent_v = false;
-
-template <class Comparator>
-inline const bool is_transparent_v<Comparator, std::void_t<typename Comparator::is_transparent> > = true;
-
 } // namespace detail
 
 template <class Key, bool Unique, class Compare, class Allocator>
-class set_base : private wavl_tree<detail::set_data<Key>, identity<Key>, Compare, Unique>
+class set_base : private wavl_tree<detail::set_data<Key>, Key, identity<Key>, Compare, Allocator, Unique>
 {
-    using tree_type = wavl_tree<detail::set_data<Key>, identity<Key>, Compare, Unique>;
+    using tree_type = wavl_tree<detail::set_data<Key>, Key, identity<Key>, Compare, Allocator, Unique>;
     using data_type = detail::set_data<Key>;
     using node_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<data_type>;
 
     template <class, bool, class, class>
     friend class set_base;
 
+    using node_pointer = std::allocator_traits<node_allocator_type>::pointer;
+    using insert_hints_type = tree_type::insert_hints;
 public:
     using key_type = tree_type::key_type;
     using value_type = tree_type::value_type;
@@ -148,9 +144,16 @@ public:
         return *this;
     }
 
-    set_base & operator=(set_base && s) noexcept(allocator_type::propagate_on_container_move_assignment::value &&
-                                     std::is_nothrow_move_assignable<allocator_type>::value &&
-                                     std::is_nothrow_move_assignable<key_compare>::value) = default;
+    set_base & operator=(set_base && s) noexcept(std::allocator_traits<Allocator>::is_always_equal::value
+                                        && std::is_nothrow_move_assignable_v<allocator_type> && std::is_nothrow_move_assignable_v<tree_type>)
+    {
+        clear();
+        for(auto it = s.begin(); it != s.end(); ++it) {
+            value_type& val = const_cast<value_type&>(*it);
+            emplace_impl(std::move(val));
+        }
+        return *this;
+    }
 
     set_base & operator=(std::initializer_list<value_type> il)
     {
@@ -187,54 +190,89 @@ public:
         else return tree_type::make_iterator(result.first);
     }
 
+    template <typename Arg>
+    static constexpr bool is_value_arg()
+    {
+        return std::is_same_v<value_type, std::remove_cvref_t<Arg>>;
+    }
+
+    template <typename... Args, typename Arg>
+    static constexpr bool is_value_arg()
+    {
+        return false;
+    }
+
+    static constexpr bool is_value_arg()
+    {
+        return false;
+    }
+
+    template <class... Args>
+    std::pair<data_type*,bool> emplace_impl(Args&&... args)
+    {
+        insert_hints_type hints;
+        if constexpr(sizeof...(Args) == 1) {
+            if constexpr(is_value_arg<Args...>()) {
+            data_type* conflict = tree_type::preinsert_node(args..., hints);
+            if (conflict) {
+                return {conflict, false};
+            }
+            data_type* node = construct_impl(std::forward<Args>(args)...);
+            tree_type::insert_node(node, hints);
+            return {node, true};
+        }
+        }
+        data_type* node = construct_impl(std::forward<Args>(args)...);
+        data_type* conflict = tree_type::preinsert_node(node->value(), hints);
+        if(conflict) {
+            destroy_impl(node);
+            return {conflict, false};
+        }
+        tree_type::insert_node(node, hints);
+        return {node, true};
+    }
+
     template <class... Args>
     insert_result_type emplace(Args&&... args)
     {
-        data_type* node = construct_impl(std::forward<Args>(args)...);
-        std::pair<data_type*,bool> ret = insert_impl(node);
-        if(!ret.second) {
-            destroy_impl(node);
-        }
-        return make_insert_result(ret);
+        return make_insert_result(emplace_impl(std::forward<Args>(args)...));
     }
 
     template <class... Args>
     iterator emplace_hint(const_iterator, Args&&... args)
     {
         //TODO: hint optimization
-        data_type* node = construct_impl(std::forward<Args>(args)...);
+        auto [node, inserted] = emplace_impl(std::forward<Args>(args)...);
         return tree_type::make_iterator(node);
     }
 
     insert_result_type insert(const value_type& v)
     {
-        return emplace(v);
+        return make_insert_result(emplace_impl(v));
     }
 
     insert_result_type insert(value_type&& v)
     {
-        return emplace(std::move(v));
+        return make_insert_result(emplace_impl(std::move(v)));
     }
 
     iterator insert(const_iterator, const value_type& v)
     {
         //TODO: hint optimization
-        data_type* node = construct_impl(v);
-        return tree_type::make_iterator(node);
+        return tree_type::make_iterator(emplace_impl(v).first);
     }
 
     iterator insert(const_iterator, value_type&& v)
     {
         //TODO: hint optimization
-        data_type* node = construct_impl(v);
-        return tree_type::make_iterator(node);
+        return tree_type::make_iterator(emplace_impl(std::move(v)).first);
     }
 
     template <class InputIterator>
     void insert(InputIterator first, InputIterator last)
     {
         for(auto it = first; it != last; ++it) {
-            insert(*it);
+            emplace_impl(*it);
         }
     }
 
@@ -258,24 +296,28 @@ public:
     
     insert_return_type insert(node_type&& nh)
     {
+        insert_hints_type hints;
         if constexpr(!Unique) {
             if(!nh) {
-                return tree_type::end();
+                return end();
             }
-            auto [new_node, _] = insert_impl(nh.get());
+            data_type* node = nh.get();
+            tree_type::preinsert_node(node->value(), hints);
+            insert_impl(node, hints);
             nh.release();
-            return tree_type::make_iterator(new_node);
+            return tree_type::make_iterator(node);
         } else {
             if(!nh) {
                 return {tree_type::end(), false, {}};
             }
-            auto ret = insert_impl(nh.get());
-            auto [new_node, inserted] = ret;
-            if (!inserted) {
-                return {tree_type::make_iterator(new_node), false, std::move(nh)};
+            data_type* node = nh.get();
+            data_type* conflict = tree_type::preinsert_node(node->value(), hints);
+            if (conflict) {
+                return {tree_type::make_iterator(conflict), false, std::move(nh)};
             }
+            insert_impl(node, hints);
             nh.release();
-            return {tree_type::make_iterator(new_node), true, {}};
+            return {tree_type::make_iterator(node), true, {}};
         }
     }
     
@@ -474,9 +516,11 @@ private:
         for(auto it = source.begin(); it != source.end();)
         {
             data_type* node = source.node_from_iterator(it++);
-            std::pair<data_type*,bool> ret = insert_impl(node);
-            if (ret.second) {
+            insert_hints_type hints;
+            data_type* conflict = tree_type::preinsert_node(node->value(), hints);
+            if (!conflict) {
                 source.remove_node_impl(node);
+                insert_impl(node, hints);
             }
         }
     }
@@ -484,8 +528,12 @@ private:
     template <typename... Args>
     data_type* construct_impl(Args&&... args)
     {
-        data_type* node = m_alloc.allocate(1);
-        return std::uninitialized_construct_using_allocator<data_type>(node, m_alloc, std::forward<Args>(args)...);
+        node_allocator_type node_alloc(get_allocator());
+        node_pointer node = std::allocator_traits<node_allocator_type>::allocate(node_alloc, 1);
+        std::construct_at(std::to_address(node));
+        allocator_type alloc(node_alloc);
+        std::allocator_traits<allocator_type>::construct(alloc, std::addressof(node->value()), std::forward<Args>(args)...);
+        return std::to_address(node);
     }
 
     void remove_node_impl(data_type* node)
@@ -494,22 +542,20 @@ private:
         m_size--;
     }
 
-    std::pair<data_type*,bool> insert_impl(data_type* node)
+    std::pair<data_type*,bool> insert_impl(data_type* node, const insert_hints_type& hints)
     {
-        typename tree_type::insert_hints hints;
-        data_type* conflict = tree_type::preinsert_node(node, hints);
-        if (conflict) {
-            return std::make_pair(conflict, false);
-        }
-        m_size++;
         tree_type::insert_node(node, hints);
+        m_size++;
         return std::make_pair(node, true);
     }
 
     void destroy_impl(data_type* node)
     {
-        std::allocator_traits<node_allocator_type>::destroy(m_alloc, node);
-        std::allocator_traits<node_allocator_type>::deallocate(m_alloc, node, 1);
+        node_allocator_type alloc(m_alloc);
+        node_pointer ptr = std::pointer_traits<node_pointer>::pointer_to(*node);
+        std::allocator_traits<node_allocator_type>::destroy(alloc, std::addressof(node->value()));
+        std::destroy_at(std::to_address(ptr));
+        std::allocator_traits<node_allocator_type>::deallocate(alloc, ptr, 1);
     }
 
     [[no_unique_address]] node_allocator_type m_alloc;
@@ -679,20 +725,26 @@ public:
         m_par_and_flag = node->m_par_and_flag;
     }
 
+    set_data(){}
+    ~set_data(){}
+
     const value_type& value() const { return m_value; }
     value_type& value() { return m_value; }
-
-    template <typename... Args>
-    set_data(Args&&... args) : m_value(std::forward<Args>(args)...){}
 private:
     set_data* m_left{nullptr};
     set_data* m_right{nullptr};
     uintptr_t m_par_and_flag{};
-    value_type m_value;
+    union {
+        value_type m_value;
+    };
 };
 } // namespace detail
 
 
 } // namespace tmi
+
+#ifdef CLANGD
+#include <test/stdset.cpp>
+#endif
 
 #endif // TMISET_H_

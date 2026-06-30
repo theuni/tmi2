@@ -20,6 +20,12 @@
 namespace tmi {
 namespace detail {
 
+template <class Comparator, class = void>
+static inline const bool is_transparent_v = false;
+
+template <class Comparator>
+static inline const bool is_transparent_v<Comparator, std::void_t<typename Comparator::is_transparent> > = true;
+
 struct hashed_type{};
 struct ordered_type{};
 struct tag_type{};

@@ -26,23 +26,23 @@ using unordered_multiset = unordered_set_base<Key, false, Hash, KeyEqual, Alloca
 namespace detail
 {
 template <typename Key>
-class set_data;
+class unordered_set_data;
 
 
 template <typename Key>
-class set_data
+class unordered_set_data
 {
 public:
     using value_type = Key;
 
-    const set_data* next_hash() const
+    const unordered_set_data* next_hash() const
     {
-        return static_cast<const set_data*>(m_nexthash);
+        return static_cast<const unordered_set_data*>(m_nexthash);
     }
 
-    set_data* next_hash()
+    unordered_set_data* next_hash()
     {
-        return static_cast<set_data*>(m_nexthash);
+        return static_cast<unordered_set_data*>(m_nexthash);
     }
 
     size_t hash() const
@@ -55,17 +55,17 @@ public:
         m_hash = hash;
     }
 
-    void set_next_hashptr(const set_data* rhs)
+    void set_next_hashptr(const unordered_set_data* rhs)
     {
-        m_nexthash = const_cast<set_data*>(rhs);
+        m_nexthash = const_cast<unordered_set_data*>(rhs);
     }
     const value_type& value() const { return m_value; }
     value_type& value() { return m_value; }
 
-    set_data(){}
-    ~set_data(){}
+    unordered_set_data(){}
+    ~unordered_set_data(){}
 private:
-    set_data* m_nexthash{nullptr};
+    unordered_set_data* m_nexthash{nullptr};
     size_t m_hash{0};
     union {
         value_type m_value;
@@ -73,20 +73,13 @@ private:
 };
 
 
-template <class Hash, class = void>
-inline const bool is_transparent_v = false;
-
-template <class Hash>
-inline const bool is_transparent_v<Hash, std::void_t<typename Hash::is_transparent> > = true;
-
-
 } // namespace detail
 
 template <class Key, bool Unique, class Hash, class KeyEqual, class Allocator>
-class unordered_set_base : private hash_tree<detail::set_data<Key>, Key, identity<Key>, Hash, KeyEqual, Allocator, Unique>
+class unordered_set_base : private hash_tree<detail::unordered_set_data<Key>, Key, identity<Key>, Hash, KeyEqual, Allocator, Unique>
 {
-    using hash_table_type = hash_tree<detail::set_data<Key>, Key, identity<Key>, Hash, KeyEqual, Allocator, Unique>;
-    using data_type = detail::set_data<Key>;
+    using hash_table_type = hash_tree<detail::unordered_set_data<Key>, Key, identity<Key>, Hash, KeyEqual, Allocator, Unique>;
+    using data_type = detail::unordered_set_data<Key>;
     using node_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<data_type>;
     using bucket_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<data_type*>;
     using node_pointer = std::allocator_traits<node_allocator_type>::pointer;
@@ -368,7 +361,8 @@ public:
                 hash_table_type::set_buckets(m_bucket_list);
                 hash_table_type::operator=(std::move(s));
                 for(auto it = s.begin(); it != s.end(); ++it) {
-                    emplace_impl(std::move(*it));
+                    value_type& val = const_cast<value_type&>(*it);
+                    emplace_impl(std::move(val));
                 }
                 s.set_buckets({});
             } else {

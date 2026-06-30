@@ -17,22 +17,23 @@
 namespace tmi {
 
 namespace detail {
-template <typename IndexedNode, typename Comparator>
+template <typename IndexedNode, typename Comparator, typename Allocator>
 struct tmi_comparator_helper
 {
     using node_type = IndexedNode;
+    using value_type = node_type::value_type;
     using key_from_value = typename Comparator::key_from_value_type;
     using key_compare = typename Comparator::comparator;
-    using tree_type = wavl_tree<node_type, key_from_value, key_compare, Comparator::is_ordered_unique()>;
+    using tree_type = wavl_tree<node_type, value_type, key_from_value, key_compare, Allocator, Comparator::is_ordered_unique()>;
 };
 } // namespace detail
 
 template <typename IndexedNode, typename Comparator, typename Parent, typename Allocator>
-class tmi_comparator : private detail::tmi_comparator_helper<IndexedNode, Comparator>::tree_type
+class tmi_comparator : private detail::tmi_comparator_helper<IndexedNode, Comparator, Allocator>::tree_type
 {
 public:
 
-    using helper_type = detail::tmi_comparator_helper<IndexedNode, Comparator>;
+    using helper_type = detail::tmi_comparator_helper<IndexedNode, Comparator, Allocator>;
     using node_type = helper_type::node_type;
     using key_from_value = helper_type::key_from_value;
     using tree_type = helper_type::tree_type;
@@ -79,7 +80,7 @@ private:
 
     node_type* tmi_preinsert_node(const node_type* node, insert_hints& hints)
     {
-        return tree_type::preinsert_node(node, hints);
+        return tree_type::preinsert_node(node->value(), hints);
     }
 
     void tmi_insert_node(node_type* node, const insert_hints& hints)
