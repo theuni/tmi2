@@ -55,7 +55,5 @@ static_assert(!std::is_nothrow_move_assignable<unordered_set_alloc<test_allocato
 static_assert(std::is_nothrow_move_assignable<unordered_set_alloc<always_equal_alloc>>::value, "");
 #endif
 static_assert(!std::is_nothrow_move_assignable<unordered_set_alloc<not_always_equal_alloc>>::value, "");
-#if defined(_LIBCPP_VERSION)
-static_assert(std::is_nothrow_move_assignable<unordered_set_alloc<other_allocator>>::value, "");
-#endif // _LIBCPP_VERSION
+LIBCPP_STATIC_ASSERT(std::is_nothrow_move_assignable<unordered_set_alloc<other_allocator>>::value, "");
 static_assert(!std::is_nothrow_move_assignable<std::set<int, some_comp<int>>>::value, "");
