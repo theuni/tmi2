@@ -67,6 +67,8 @@ public:
     using insert_return_type = std::conditional_t<Unique, tmi::detail::insert_return_type<iterator, node_type>, iterator>;
     using insert_result_type = std::conditional_t<Unique, std::pair<iterator, bool>, iterator>;
 
+    static_assert(std::is_same<typename allocator_type::value_type, value_type>::value);
+
     set_base()
         noexcept(
             std::is_nothrow_default_constructible<allocator_type>::value &&
