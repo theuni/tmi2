@@ -1,5 +1,5 @@
-#ifndef _TMI_UNORDERED_SET
-#define _TMI_UNORDERED_SET
+#ifndef _TMI_STD_UNORDERED_SET_H
+#define _TMI_STD_UNORDERED_SET_H
 
 #if 1
 #include <tmi_unordered_set.h>
@@ -13,4 +13,4 @@ namespace std
 #else
 #include_next <unordered_set>
 #endif
-#endif // _TMI_UNORDERED_SET
+#endif // _TMI_STD_UNORDERED_SET_H
