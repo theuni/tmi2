@@ -22,7 +22,7 @@
 namespace tmi {
 
 namespace detail {
-template <typename IndexedNode, typename Hasher>
+template <typename IndexedNode, typename Hasher, typename Allocator>
 struct tmi_hasher_helper
 {
     using node_type = IndexedNode;
@@ -30,22 +30,23 @@ struct tmi_hasher_helper
     using value_type = typename node_type::value_type;
     using hasher = typename Hasher::hasher_type;
     using key_equal = typename Hasher::pred_type;
-    using tree_type = hash_tree<node_type, value_type, key_from_value, hasher, key_equal, Hasher::is_hashed_unique()>;
+    using tree_type = hash_tree<node_type, value_type, key_from_value, hasher, key_equal, Allocator, Hasher::is_hashed_unique()>;
 };
 } // namespace detail
 
 template <typename IndexedNode, typename Hasher, typename Parent, typename Allocator>
-class tmi_hasher : private detail::tmi_hasher_helper<IndexedNode, Hasher>::tree_type
+class tmi_hasher : private detail::tmi_hasher_helper<IndexedNode, Hasher, Allocator>::tree_type
 {
 public:
-    using helper_type = detail::tmi_hasher_helper<IndexedNode, Hasher>;
+    using helper_type = detail::tmi_hasher_helper<IndexedNode, Hasher, Allocator>;
     using node_type = helper_type::node_type;
     using key_from_value = helper_type::key_from_value;
     using key_type = key_from_value::result_type;
     using hasher = helper_type::hasher;
     using key_equal = helper_type::key_equal;
     using tree_type = helper_type::tree_type;
-    using size_type = size_t;
+    using size_type = tree_type::size_type;
+    using difference_type = tree_type::difference_type;
     using ctor_args = std::tuple<size_type,key_from_value,hasher,key_equal>;
     using allocator_type = Allocator;
     using bucket_allocator_type = typename std::allocator_traits<allocator_type>::template rebind_alloc<node_type*>;

@@ -19,19 +19,24 @@
 
 namespace tmi {
 
-template <typename Node, typename Value, typename KeyFromValue, typename Hash, typename KeyEqual, bool Unique>
+template <typename Node, typename Value, typename KeyFromValue, typename Hash, typename KeyEqual, typename Allocator, bool Unique>
 class hash_tree
 {
 public:
     using node_type = Node;
-    using size_type = std::size_t;
     using key_from_value_type = KeyFromValue;
     using key_type = typename key_from_value_type::result_type;
     using hasher_type = Hash;
     using key_equal_type = KeyEqual;
-    using ctor_args = std::tuple<size_type,key_from_value_type,hasher_type,key_equal_type>;
     using value_type = Value;
-    using difference_type = std::ptrdiff_t;
+    using allocator_type = Allocator;
+
+    using reference = value_type&;
+    using const_reference = const value_type&;
+    using size_type = std::allocator_traits<allocator_type>::size_type;
+    using difference_type = std::allocator_traits<allocator_type>::difference_type;
+    using pointer = std::allocator_traits<allocator_type>::pointer;
+    using const_pointer = std::allocator_traits<allocator_type>::const_pointer;
 
 private:
 
@@ -235,15 +240,15 @@ public:
         friend class hash_tree;
     public:
 
-        typedef const Value value_type;
-        typedef const value_type* pointer;
-        typedef const value_type& reference;
-        using difference_type = std::ptrdiff_t;
+        using value_type = hash_tree::value_type;
+        using pointer = hash_tree::const_pointer;
+        using reference = hash_tree::const_reference;
+        using difference_type = hash_tree::difference_type;
         using element_type = const value_type;
         using iterator_category = std::forward_iterator_tag;
         iterator() = default;
         reference operator*() const { return m_node->value(); }
-        pointer operator->() const { return &m_node->value(); }
+        pointer operator->() const { return std::pointer_traits<pointer>::pointer_to(m_node->value()); }
         iterator& operator++()
         {
             const node_type* next = m_node->next_hash();
@@ -278,10 +283,10 @@ public:
         friend class hash_tree;
     public:
 
-        typedef const Value value_type;
-        typedef const value_type* pointer;
-        typedef const value_type& reference;
-        using difference_type = std::ptrdiff_t;
+        using value_type = hash_tree::value_type;
+        using pointer = hash_tree::const_pointer;
+        using reference = hash_tree::const_reference;
+        using difference_type = hash_tree::difference_type;
         using element_type = const value_type;
         using local_iterator_category = std::forward_iterator_tag;
         local_iterator() = default;
@@ -562,8 +567,8 @@ protected:
 
 };
 
-template <typename Node, typename Value, typename KeyFromValue, typename Hash, typename KeyEqual, bool Unique>
-void swap(hash_tree<Node, Value, KeyFromValue, Hash, KeyEqual, Unique>& x, hash_tree<Node, Value, KeyFromValue, Hash, KeyEqual, Unique>& y) noexcept(noexcept(x.swap(y)))
+template <typename Node, typename Value, typename KeyFromValue, typename Hash, typename KeyEqual, typename Allocator, bool Unique>
+void swap(hash_tree<Node, Value, KeyFromValue, Hash, KeyEqual, Allocator, Unique>& x, hash_tree<Node, Value, KeyFromValue, Hash, KeyEqual, Allocator, Unique>& y) noexcept(noexcept(x.swap(y)))
 {
     x.swap(y);
 }

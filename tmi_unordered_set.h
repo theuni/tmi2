@@ -83,9 +83,9 @@ inline const bool is_transparent_v<Hash, std::void_t<typename Hash::is_transpare
 } // namespace detail
 
 template <class Key, bool Unique, class Hash, class KeyEqual, class Allocator>
-class unordered_set_base : private hash_tree<detail::set_data<Key>, Key, identity<Key>, Hash, KeyEqual, Unique>
+class unordered_set_base : private hash_tree<detail::set_data<Key>, Key, identity<Key>, Hash, KeyEqual, Allocator, Unique>
 {
-    using hash_table_type = hash_tree<detail::set_data<Key>, Key, identity<Key>, Hash, KeyEqual, Unique>;
+    using hash_table_type = hash_tree<detail::set_data<Key>, Key, identity<Key>, Hash, KeyEqual, Allocator, Unique>;
     using data_type = detail::set_data<Key>;
     using node_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<data_type>;
     using bucket_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<data_type*>;
@@ -214,18 +214,18 @@ public:
     using value_type = hash_table_type::value_type;
     using hasher = hash_table_type::hasher_type;
     using key_equal = hash_table_type::key_equal_type;
-    using allocator_type = Allocator;
-    using reference = value_type&;
-    using const_reference = const value_type&;
+    using allocator_type = hash_table_type::allocator_type;
+    using reference = hash_table_type::reference;
+    using const_reference = hash_table_type::const_reference;
     using size_type = hash_table_type::size_type;
     using difference_type = hash_table_type::difference_type;
-    using pointer = std::allocator_traits<allocator_type>::pointer;
-    using const_pointer = std::allocator_traits<allocator_type>::const_pointer;
-
+    using pointer = hash_table_type::pointer;
+    using const_pointer = hash_table_type::const_pointer;
     using iterator = hash_table_type::iterator;
     using const_iterator = hash_table_type::const_iterator;
     using local_iterator = hash_table_type::local_iterator;
     using const_local_iterator = hash_table_type::const_local_iterator;
+
     using node_type = tmi::detail::node_handle<allocator_type, data_type>;
     using insert_return_type = std::conditional_t<Unique, tmi::detail::insert_return_type<iterator, node_type>, iterator>;
     using insert_result_type = std::conditional_t<Unique, std::pair<iterator, bool>, iterator>;
