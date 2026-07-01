@@ -1,0 +1,17 @@
+#ifndef _TMI_STD_SET
+#define _TMI_STD_SET
+
+#if 1
+#include <tmiset.h>
+namespace std
+{
+    using namespace tmi;
+    using tmi::erase_if;
+    using tmi::swap;
+    using tmi::operator==;
+    using tmi::operator<=>;
+}
+#else
+#include_next <set>
+#endif
+#endif // _TMI_STD_SET
