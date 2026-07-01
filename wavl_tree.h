@@ -289,14 +289,34 @@ private:
 
 public:
     wavl_tree(key_from_value_type key_from_value, key_compare_type comparator) : m_key_from_value{std::move(key_from_value)}, m_comparator(std::move(comparator)) {}
-    wavl_tree(const wavl_tree& rhs)  = delete;
-    wavl_tree(wavl_tree&& rhs) = default;
+    wavl_tree(const wavl_tree& rhs) : m_root{nullptr}, m_key_from_value{rhs.m_key_from_value}, m_comparator{rhs.m_comparator} {}
+    wavl_tree(wavl_tree&& rhs) : m_root{rhs.m_root}, m_key_from_value{std::move(rhs.m_key_from_value)}, m_comparator{std::move(rhs.m_comparator)}
+    {
+        rhs.m_root = nullptr;
+    }
     wavl_tree() = default;
 
-    wavl_tree& operator=(wavl_tree&& rhs) noexcept(std::is_nothrow_move_assignable_v<key_from_value_type> && std::is_nothrow_move_assignable_v<key_compare_type>) = default;
+    wavl_tree& operator=(const wavl_tree& rhs)
+    {
+        m_key_from_value = rhs.m_key_from_value;
+        m_comparator = rhs.m_comparator;
+        m_root = rhs.m_root;
+        return *this;
+    }
+
+    wavl_tree& operator=(wavl_tree&& rhs) noexcept(std::is_nothrow_move_assignable_v<key_from_value_type> && std::is_nothrow_move_assignable_v<key_compare_type>)
+    {
+        m_key_from_value = std::move(rhs.m_key_from_value);
+        m_comparator = std::move(rhs.m_comparator);
+        m_root = rhs.m_root;
+        return *this;
+    }
 
     void remove_node(node_type* node)
     {
+        if (!node) {
+            return;
+        }
         tree_remove(node);
         verify_tree(m_root);
     }
@@ -407,21 +427,16 @@ public:
 
     void swap(wavl_tree& rhs) noexcept(std::is_nothrow_swappable_v<key_compare_type> && std::is_nothrow_swappable_v<key_from_value_type>)
     {
-        auto temp_root = m_root;
-        m_root = rhs.m_root;
-        rhs.m_root = temp_root;
+        std::swap(m_root, rhs.m_root);
+        std::swap(m_key_from_value, rhs.m_key_from_value);
+        std::swap(m_comparator, rhs.m_comparator);
     }
 
-    void clear() noexcept
+    void release() noexcept
     {
         m_root = nullptr;
     }
  
-    size_type max_size() const noexcept
-    {
-        return std::numeric_limits<difference_type>::max();
-    }
-
     class iterator
     {
         const node_type* m_node{};
@@ -440,11 +455,8 @@ public:
         pointer operator->() const { return std::pointer_traits<pointer>::pointer_to(m_node->value()); }
         iterator& operator++()
         {
-            const node_type* next = tree_next(m_node);
-            if (next) {
-                m_node = next;
-            } else {
-                m_node = nullptr;
+            if (m_node) {
+                m_node = tree_next(m_node);
             }
             return *this;
         }
@@ -509,22 +521,22 @@ public:
 
     reverse_iterator rbegin() noexcept
     {
-        return reverse_iterator(begin());
+        return reverse_iterator(end());
     }
 
     const_reverse_iterator rbegin() const noexcept
     {
-        return const_reverse_iterator(begin());
+        return const_reverse_iterator(cend());
     }
 
     reverse_iterator rend() noexcept
     {
-        return reverse_iterator(end());
+        return reverse_iterator(begin());
     }
 
     const_reverse_iterator rend() const noexcept
     {
-        return const_reverse_iterator(end());
+        return const_reverse_iterator(cbegin());
     }
 
     const_iterator cbegin() const noexcept

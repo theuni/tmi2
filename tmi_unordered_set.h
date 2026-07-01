@@ -506,7 +506,9 @@ public:
     node_type extract(const_iterator position)
     {
         data_type* node = hash_table_type::node_from_iterator(position);
-        remove_node_impl(node);
+        if(node) {
+            remove_node_impl(node);
+        }
         return {get_allocator(), node};
     }
 
@@ -767,6 +769,7 @@ private:
 
     void remove_node_impl(data_type* node)
     {
+        assert(node);
         hash_table_type::remove_node(node);
         m_size--;
     }

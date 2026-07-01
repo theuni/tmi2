@@ -90,25 +90,28 @@ public:
         insert(first, last);
     }
 
-    set_base(const set_base & s) : set_base(s.value_comp(), std::allocator_traits<allocator_type>::select_on_container_copy_construction(s.get_allocator()))
+    set_base(const set_base & s) : set_base(s, std::allocator_traits<allocator_type>::select_on_container_copy_construction(s.get_allocator()))
     {
-        insert(s.begin(), s.end());
     }
 
     set_base(set_base && s) noexcept(std::is_nothrow_move_constructible<allocator_type>::value &&
-                          std::is_nothrow_move_constructible<key_compare>::value) = default;
+                          std::is_nothrow_move_constructible<key_compare>::value) : tree_type{std::move(s)}, m_alloc{std::move(s.m_alloc)}, m_size{s.m_size}
+    {
+        s.m_size = 0;
+    }
 
     explicit set_base(const allocator_type& a) : m_alloc{a}
     {
     }
 
-    set_base(const set_base & s, const allocator_type& a) : m_alloc(a)
+    set_base(const set_base & s, const allocator_type& a) : tree_type{s}, m_alloc(a)
     {
         insert(s.begin(), s.end());
     }
 
-    set_base(set_base && s, const allocator_type& a) : tree_type(std::move(static_cast<tree_type&&>(s))), m_alloc(a)
+    set_base(set_base && s, const allocator_type& a) : tree_type(std::move(s)), m_alloc(a), m_size{s.m_size}
     {
+        s.m_size = 0;
     }
 
     set_base(std::initializer_list<value_type> il, const value_compare& comp = value_compare()) : set_base(comp)
@@ -139,7 +142,15 @@ public:
 
     set_base & operator=(const set_base & s)
     {
+        if (this == std::addressof(s))
+            return *this;
+
         clear();
+        if constexpr(std::allocator_traits<allocator_type>::propagate_on_container_copy_assignment::value) {
+            m_alloc = s.m_alloc;
+        }
+        tree_type::operator=(s);
+        tree_type::release();
         insert(s.begin(), s.end());
         return *this;
     }
@@ -147,11 +158,30 @@ public:
     set_base & operator=(set_base && s) noexcept(std::allocator_traits<Allocator>::is_always_equal::value
                                         && std::is_nothrow_move_assignable_v<allocator_type> && std::is_nothrow_move_assignable_v<tree_type>)
     {
+        if (this == std::addressof(s))
+            return *this;
+
         clear();
-        for(auto it = s.begin(); it != s.end(); ++it) {
-            value_type& val = const_cast<value_type&>(*it);
-            emplace_impl(std::move(val));
+        if constexpr(std::allocator_traits<allocator_type>::propagate_on_container_move_assignment::value) {
+            if (!(m_alloc == s.m_alloc)) {
+                m_alloc = s.m_alloc;
+                tree_type::operator=(std::move(s));
+                tree_type::release();
+                for(auto it = s.begin(); it != s.end(); ++it) {
+                    value_type& val = const_cast<value_type&>(*it);
+                    emplace_impl(std::move(val));
+                }
+                s.release();
+                s.m_size = 0;
+                return *this;
+            }
+            m_alloc = s.m_alloc;
         }
+        m_size = s.m_size;
+        tree_type::operator=(std::move(s));
+        s.release();
+        s.m_size = 0;
+
         return *this;
     }
 
@@ -181,8 +211,12 @@ public:
         return !size();
     }
 
-    using tree_type::max_size;
-
+    size_type max_size() const noexcept
+    {
+        size_type max_distance = std::numeric_limits<difference_type>::max();
+        size_type max_alloc = std::allocator_traits<node_allocator_type>::max_size(m_alloc);
+        return std::min(max_distance, max_alloc);
+    }
 
     insert_result_type make_insert_result(std::pair<data_type*, bool> result)
     {
@@ -218,7 +252,7 @@ public:
                 return {conflict, false};
             }
             data_type* node = construct_impl(std::forward<Args>(args)...);
-            tree_type::insert_node(node, hints);
+            insert_impl(node, hints);
             return {node, true};
         }
         }
@@ -228,7 +262,7 @@ public:
             destroy_impl(node);
             return {conflict, false};
         }
-        tree_type::insert_node(node, hints);
+        insert_impl(node, hints);
         return {node, true};
     }
 
@@ -284,7 +318,9 @@ public:
     node_type extract(const_iterator position)
     {
         data_type* node = tree_type::node_from_iterator(position);
-        remove_node_impl(node);
+        if (node) {
+            remove_node_impl(node);
+        }
         return {m_alloc, node};
     }
 
@@ -388,6 +424,12 @@ public:
     void swap(set_base & s) noexcept(std::allocator_traits<Allocator>::is_always_equal::value &&
                                std::is_nothrow_swappable_v<tree_type>)
     {
+        if constexpr(std::allocator_traits<allocator_type>::propagate_on_container_swap::value)
+        {
+            using std::swap;
+            swap(m_alloc, s.m_alloc);
+        }
+        std::swap(m_size, s.m_size);
         return tree_type::swap(s);
     }
 
@@ -538,6 +580,7 @@ private:
 
     void remove_node_impl(data_type* node)
     {
+        assert(node);
         tree_type::remove_node(node);
         m_size--;
     }

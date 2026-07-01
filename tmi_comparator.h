@@ -95,7 +95,7 @@ private:
 
     void tmi_clear()
     {
-        tree_type::clear();
+        tree_type::release();
     }
 
 public:
