@@ -42,6 +42,9 @@ public:
     static constexpr bool requires_premodify_cache() { return false; }
 
 private:
+    // For LWG issue 2436
+    static_assert(std::is_copy_constructible_v<key_compare_type>);
+
     node_type* m_root{nullptr};
     [[no_unique_address]] key_from_value_type m_key_from_value;
     [[no_unique_address]] key_compare_type m_comparator;
