@@ -10,7 +10,7 @@ set (set_nonmember_compile_fail_sources
 foreach(source_file IN LISTS set_nonmember_compile_fail_sources)
     try_compile(result_var SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/${source_file}" NO_CACHE
         OUTPUT_VARIABLE compile_output
-        CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${CMAKE_SOURCE_DIR};${CMAKE_SOURCE_DIR}/test/llvm-tests/support"
+        CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${CMAKE_SOURCE_DIR};${CMAKE_SOURCE_DIR}/test/llvm-tests/stdlib-overrides"
     )
     if (result_var)
         message(SEND_ERROR "${source_file} should not compile. Output: ${compile_output}")
