@@ -5,9 +5,7 @@ target_include_directories(llvm_test_interface SYSTEM INTERFACE ${CMAKE_CURRENT_
 target_link_libraries(llvm_test_interface INTERFACE common_interface)
 target_link_libraries(llvm_test_interface INTERFACE warnings_interface)
 
-try_append_cxx_flags("--warning-suppression-mappings=${CMAKE_CURRENT_SOURCE_DIR}/suppression_mappings.txt" TARGET llvm_test_interface SKIP_LINK
-  IF_CHECK_PASSED "--warning-suppression-mappings=${CMAKE_CURRENT_SOURCE_DIR}/suppression_mappings.txt"
-)
+try_append_cxx_flags("--warning-suppression-mappings=${CMAKE_CURRENT_SOURCE_DIR}/suppression_mappings.txt" TARGET llvm_test_interface SKIP_LINK)
 
 try_append_cxx_flags("-Wshorten-64-to-32" TARGET llvm_test_interface SKIP_LINK
   IF_CHECK_PASSED "-Wno-shorten-64-to-32"
