@@ -1,5 +1,5 @@
-#ifndef _TMI_STD_SET
-#define _TMI_STD_SET
+#ifndef TMI_STD_SET_H
+#define TMI_STD_SET_H
 
 #if 1
 #include <tmiset.h>
@@ -14,4 +14,4 @@ namespace std
 #else
 #include_next <set>
 #endif
-#endif // _TMI_STD_SET
+#endif // TMI_STD_SET_H

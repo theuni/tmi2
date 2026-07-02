@@ -1,7 +1,17 @@
 add_library(llvm_test_interface INTERFACE)
 target_compile_definitions(llvm_test_interface INTERFACE IGNORE_LIBCPP_SPECIFIC_BEHAVIOR)
-target_include_directories(llvm_test_interface INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/support)
+target_include_directories(llvm_test_interface INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/stdlib-overrides)
+target_include_directories(llvm_test_interface SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/support)
 target_link_libraries(llvm_test_interface INTERFACE common_interface)
+target_link_libraries(llvm_test_interface INTERFACE warnings_interface)
+
+try_append_cxx_flags("--warning-suppression-mappings=${CMAKE_CURRENT_SOURCE_DIR}/suppression_mappings.txt" TARGET llvm_test_interface SKIP_LINK
+  IF_CHECK_PASSED "--warning-suppression-mappings=${CMAKE_CURRENT_SOURCE_DIR}/suppression_mappings.txt"
+)
+
+try_append_cxx_flags("-Wshorten-64-to-32" TARGET llvm_test_interface SKIP_LINK
+  IF_CHECK_PASSED "-Wno-shorten-64-to-32"
+)
 
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
