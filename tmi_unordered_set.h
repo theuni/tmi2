@@ -162,6 +162,8 @@ class unordered_set_base : private hash_tree<detail::unordered_set_data<Key>, Ke
         {
         }
 
+        buckets_allocator& operator=(const buckets_allocator& rhs) = default;
+
         bool operator==(const buckets_allocator& rhs) const
         {
             return m_alloc == rhs.m_alloc;
@@ -343,7 +345,6 @@ public:
         if (this == std::addressof(s))
             return *this;
 
-        size_type old_bucket_count = bucket_count();
         size_type new_bucket_count = s.bucket_count();
         clear();
         m_max_load_factor = s.max_load_factor();
