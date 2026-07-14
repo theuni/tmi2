@@ -342,7 +342,7 @@ public:
     }
 
     template <typename CompatibleKey>
-    node_type* preinsert_node(const CompatibleKey& val, insert_hints& hints)
+    node_type* preinsert_node(const node_type*, const CompatibleKey& val, insert_hints& hints)
     {
         node_type* parent = nullptr;
         node_type* curr = m_root;

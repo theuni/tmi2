@@ -80,7 +80,7 @@ private:
 
     node_type* tmi_preinsert_node(const node_type* node, insert_hints& hints)
     {
-        return tree_type::preinsert_node(node->value(), hints);
+        return tree_type::preinsert_node(nullptr, node->value(), hints);
     }
 
     void tmi_insert_node(node_type* node, const insert_hints& hints)

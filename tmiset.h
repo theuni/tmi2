@@ -169,7 +169,7 @@ public:
                 tree_type::release();
                 for(auto it = s.begin(); it != s.end(); ++it) {
                     value_type& val = const_cast<value_type&>(*it);
-                    emplace_impl(std::move(val));
+                    emplace_impl(nullptr, std::move(val));
                 }
                 s.release();
                 s.m_size = 0;
@@ -242,12 +242,12 @@ public:
     }
 
     template <class... Args>
-    std::pair<data_type*,bool> emplace_impl(Args&&... args)
+    std::pair<data_type*,bool> emplace_impl(const data_type* node_hint, Args&&... args)
     {
         insert_hints_type hints;
         if constexpr(sizeof...(Args) == 1) {
             if constexpr(is_value_arg<Args...>()) {
-            data_type* conflict = tree_type::preinsert_node(args..., hints);
+            data_type* conflict = tree_type::preinsert_node(node_hint, args..., hints);
             if (conflict) {
                 return {conflict, false};
             }
@@ -257,7 +257,7 @@ public:
         }
         }
         data_type* node = construct_impl(std::forward<Args>(args)...);
-        data_type* conflict = tree_type::preinsert_node(node->value(), hints);
+        data_type* conflict = tree_type::preinsert_node(node_hint, node->value(), hints);
         if(conflict) {
             destroy_impl(node);
             return {conflict, false};
@@ -269,44 +269,44 @@ public:
     template <class... Args>
     insert_result_type emplace(Args&&... args)
     {
-        return make_insert_result(emplace_impl(std::forward<Args>(args)...));
+        return make_insert_result(emplace_impl(nullptr, std::forward<Args>(args)...));
     }
 
     template <class... Args>
-    iterator emplace_hint(const_iterator, Args&&... args)
+    iterator emplace_hint(const_iterator position, Args&&... args)
     {
-        //TODO: hint optimization
-        auto [node, inserted] = emplace_impl(std::forward<Args>(args)...);
+        const data_type* node_hint = tree_type::node_from_iterator(position);
+        auto [node, inserted] = emplace_impl(node_hint, std::forward<Args>(args)...);
         return tree_type::make_iterator(node);
     }
 
     insert_result_type insert(const value_type& v)
     {
-        return make_insert_result(emplace_impl(v));
+        return make_insert_result(emplace_impl(nullptr, v));
     }
 
     insert_result_type insert(value_type&& v)
     {
-        return make_insert_result(emplace_impl(std::move(v)));
+        return make_insert_result(emplace_impl(nullptr, std::move(v)));
     }
 
     iterator insert(const_iterator, const value_type& v)
     {
         //TODO: hint optimization
-        return tree_type::make_iterator(emplace_impl(v).first);
+        return tree_type::make_iterator(emplace_impl(nullptr, v).first);
     }
 
     iterator insert(const_iterator, value_type&& v)
     {
         //TODO: hint optimization
-        return tree_type::make_iterator(emplace_impl(std::move(v)).first);
+        return tree_type::make_iterator(emplace_impl(nullptr, std::move(v)).first);
     }
 
     template <class InputIterator>
     void insert(InputIterator first, InputIterator last)
     {
         for(auto it = first; it != last; ++it) {
-            emplace_impl(*it);
+            emplace_impl(nullptr, *it);
         }
     }
 
@@ -338,7 +338,7 @@ public:
                 return end();
             }
             data_type* node = nh.get();
-            tree_type::preinsert_node(node->value(), hints);
+            tree_type::preinsert_node(nullptr, node->value(), hints);
             insert_impl(node, hints);
             nh.release();
             return tree_type::make_iterator(node);
@@ -347,7 +347,7 @@ public:
                 return {tree_type::end(), false, {}};
             }
             data_type* node = nh.get();
-            data_type* conflict = tree_type::preinsert_node(node->value(), hints);
+            data_type* conflict = tree_type::preinsert_node(nullptr, node->value(), hints);
             if (conflict) {
                 return {tree_type::make_iterator(conflict), false, std::move(nh)};
             }
@@ -559,7 +559,7 @@ private:
         {
             data_type* node = source.node_from_iterator(it++);
             insert_hints_type hints;
-            data_type* conflict = tree_type::preinsert_node(node->value(), hints);
+            data_type* conflict = tree_type::preinsert_node(nullptr, node->value(), hints);
             if (!conflict) {
                 source.remove_node_impl(node);
                 insert_impl(node, hints);
