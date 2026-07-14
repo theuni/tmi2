@@ -206,7 +206,7 @@ public:
         return m_size;
     }
 
-    bool empty() const noexcept
+    [[nodiscard]] bool empty() const noexcept
     {
         return !size();
     }
