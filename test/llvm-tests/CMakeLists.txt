@@ -13,4 +13,10 @@ try_append_cxx_flags("-Wshorten-64-to-32" TARGET llvm_test_interface SKIP_LINK
 
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-add_subdirectory(std/containers/)
+add_library(llvm_bench_interface INTERFACE)
+target_link_libraries(llvm_bench_interface INTERFACE llvm_test_interface)
+
+add_subdirectory(benchmarks/containers/associative)
+add_subdirectory(third-party/benchmark/src)
+
+add_subdirectory(std/containers)

@@ -6,6 +6,7 @@ src:*/test/llvm-tests/std/*
 
 [exit-time-destructors]
 src:*/test/llvm-tests/std/*
+src:*/GenerateInput.h
 
 [old-style-cast]
 src:*/test/llvm-tests/std/*
@@ -30,6 +31,8 @@ src:*/test/llvm-tests/std/*
 
 [sign-conversion]
 src:*/test/llvm-tests/std/*
+src:*/test/llvm-tests/benchmarks/containers/associative/associative_container_benchmarks.h
+src:*/GenerateInput.h
 
 [missing-variable-declarations]
 src:*/test/llvm-tests/std/*
@@ -42,3 +45,6 @@ src:*/test/llvm-tests/std/*
 
 [unused-member-function]
 src:*/test/llvm-tests/std/*
+
+[nrvo]
+src:*/test/llvm-tests/benchmarks/containers/associative/associative_container_benchmarks.h
