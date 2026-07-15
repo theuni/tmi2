@@ -115,10 +115,8 @@ class unordered_set_base : private hash_tree<detail::unordered_set_data<Key>, Ke
             rhs.m_ptr = nullptr;
             return *this;
         }
-        bucket_list(bucket_list&& rhs) noexcept
+        bucket_list(bucket_list&& rhs) noexcept : m_ptr{rhs.m_ptr}, m_size{rhs.m_size}
         {
-            m_size = rhs.m_size;
-            m_ptr = rhs.m_ptr;
             rhs.m_size = 0;
             rhs.m_ptr = nullptr;
         }
@@ -158,6 +156,7 @@ class unordered_set_base : private hash_tree<detail::unordered_set_data<Key>, Ke
         {
         }
 
+        buckets_allocator(buckets_allocator&& rhs) = default;
         buckets_allocator(const buckets_allocator& rhs) : m_alloc{std::allocator_traits<allocator_type>::select_on_container_copy_construction(rhs.m_alloc)}
         {
         }
@@ -267,8 +266,10 @@ public:
 
     unordered_set_base(unordered_set_base&& u, const Allocator& a) : hash_table_type{std::move(u)}, m_size(u.m_size), m_max_load_factor{u.m_max_load_factor}, m_alloc{a}, m_bucket_list{std::move(u.m_bucket_list)}
     {
-        u.m_size = 0;
-        hash_table_type::set_buckets(m_bucket_list);
+        // TODO
+        if (a != u.get_allocator()) {
+        } else {
+        }
     }
 
     unordered_set_base(std::initializer_list<value_type> il, size_type n = 0, const hasher& hf = hasher(), const key_equal& eql = key_equal(), const allocator_type& a = allocator_type()) : unordered_set_base(n, hf, eql, a)

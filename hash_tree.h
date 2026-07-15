@@ -252,9 +252,9 @@ public:
         iterator& operator++()
         {
             const node_type* next = m_node->next_hash();
-            const size_t bucket_count = m_tree->m_buckets.size();
-            size_t bucket_start = hash_to_bucket(m_node->hash(), bucket_count);
             if (!next) {
+                const size_t bucket_count = m_tree->m_buckets.size();
+                size_t bucket_start = hash_to_bucket(m_node->hash(), bucket_count);
                 for (size_t bucket = bucket_start + 1; bucket < bucket_count; ++bucket) {
                     next = m_tree->m_buckets[bucket];
                     if (next) {
@@ -549,10 +549,7 @@ protected:
 
     static constexpr size_type hash_to_bucket(size_type hash, size_type bucket_count)
     {
-        // This is safe if bucket counts are always POT. If they're prime
-        // instead, which is safer for bad hash functions, this should be a
-        // modulo.
-        return hash & (bucket_count - 1);
+        return hash % bucket_count;
     }
 
     static constexpr size_type increase_bucket_count(size_type from, size_type new_minimum)
