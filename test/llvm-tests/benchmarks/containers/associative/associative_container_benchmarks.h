@@ -626,6 +626,7 @@ void associative_container_benchmarks(std::string container) {
 
     std::vector<Container> c;
     std::vector<typename Container::iterator> iterators;
+    c.reserve(BatchSize);
     for (std::size_t i = 0; i != BatchSize; ++i) {
       c.push_back(Container(in.begin(), in.end()));
       iterators.push_back(c[i].find(get_key(element)));
