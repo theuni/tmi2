@@ -116,6 +116,7 @@ public:
             prev_node = cur_node;
             cur_node = cur_node->next_hash();
         }
+        verify_tree();
     }
 
     void insert_node_direct(node_type* node)
@@ -208,6 +209,7 @@ public:
             node->set_next_hashptr(hints.m_prev->next_hash());
             hints.m_prev->set_next_hashptr(node);
         }
+        verify_tree();
     }
 
 
@@ -502,6 +504,7 @@ public:
     void set_buckets(hash_buckets new_buckets)
     {
         m_buckets = new_buckets;
+        verify_tree();
     }
 
     void rehash(hash_buckets new_buckets)
@@ -561,6 +564,54 @@ protected:
         }
         return new_bucket_count;
     }
+
+private:
+
+#ifdef TMI_VERIFY_CHECK
+    bool verify_unique_key(const node_type* node, size_t index) const
+    {
+        const node_type* other = m_buckets[index];
+        const key_type& key = m_key_from_value(node->value());
+        while(other) {
+            if (other != node && m_pred(m_key_from_value(other->value()), key)) {
+                return false;
+            }
+            other = other->next_hash();
+        }
+        return true;
+    }
+
+    bool verify_hashes() const {
+        size_t bucket_count = m_buckets.size();
+        for (size_t index = 0; index < bucket_count; index++) {
+            const node_type* node = m_buckets[index];
+            while(node) {
+                size_t hash = m_hasher(m_key_from_value(node->value()));
+                if (hash != node->hash())
+                {
+                    return false;
+                }
+                if (index != hash_to_bucket(hash, bucket_count)) {
+                    return false;
+                }
+                if constexpr (unique_keys()) {
+                    if (!verify_unique_key(node, index)) {
+                        return false;
+                    }
+                }
+                node = node->next_hash();
+            }
+        }
+        return true;
+    }
+
+    bool verify_tree() const {
+        assert(verify_hashes());
+        return true;
+    }
+#else
+    static constexpr bool verify_tree() { return true; }
+#endif
 
 };
 

@@ -51,7 +51,8 @@ add_executable(tmi-test test/test.cpp
     test/stdset.cpp
     test/std_unordered_set.cpp
 )
-target_compile_definitions(tmi-test PRIVATE DEBUG)
+target_compile_definitions(common_interface INTERFACE TMI_VERIFY_CHECK)
+
 target_link_libraries(tmi-test PRIVATE warnings_interface)
 target_link_libraries(tmi-test PRIVATE common_interface)
 
@@ -69,7 +70,6 @@ if(BUILD_FUZZ)
     add_executable(fuzz_multi_index fuzz/fuzz_multi_index.cpp)
     target_link_libraries(fuzz_multi_index PRIVATE warnings_interface)
     target_link_libraries(fuzz_multi_index PRIVATE common_interface)
-    target_compile_definitions(fuzz_multi_index PRIVATE DEBUG)
     target_compile_options(fuzz_multi_index PRIVATE
         -g -O1 -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
     target_link_options(fuzz_multi_index PRIVATE

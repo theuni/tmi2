@@ -267,7 +267,7 @@ private:
             }
         }
     }
-#ifdef DEBUG
+#ifdef TMI_VERIFY_CHECK
     static int compute_rank(node_type* n)
     {
         if (!n) return -1;
@@ -275,16 +275,48 @@ private:
         if (lr < -1 || rr < -1) return -2;
         int rank_l = lr + (n->rp() == (lr & 1) ? 2 : 1);
         int rank_r = rr + (n->rp() == (rr & 1) ? 2 : 1);
-        assert(rank_l == rank_r);
+        if (rank_l != rank_r) {
+            printf("rank mismatch\n");
+            return -2;
+        }
+
+        if (!n->left() && !n->right() && rank_l != 0) {
+            printf("leaf must be 1,1\n");
+            return -2;
+        }
         return rank_l;
     }
-    static bool verify_tree(node_type* root) {
-        int rank = compute_rank(root);
-        assert(rank >= -1);
+    bool check_order() const
+    {
+        if (!m_root) {
+            return true;
+        }
+        node_type* node = tree_min(m_root);
+        while(node) {
+            node_type* next = tree_next(node);
+            if (next) {
+                const auto& curr_key = m_key_from_value(node->value());
+                const auto& next_key = m_key_from_value(next->value());
+                if (m_comparator(next_key, curr_key)) {
+                    return false;
+                }
+                if constexpr (unique_keys()) {
+                    if (!m_comparator(curr_key, next_key)) {
+                        return false;
+                    }
+                }
+            }
+            node = next;
+        }
+        return true;
+    }
+    bool verify_tree() const {
+        assert(compute_rank(m_root) >= -1);
+        assert(check_order());
         return true;
     }
 #else
-    static bool verify_tree(node_type*) { return true; }
+    static constexpr bool verify_tree() { return true; }
 #endif
 
 public:
@@ -318,7 +350,7 @@ public:
             return;
         }
         tree_remove(node);
-        verify_tree(m_root);
+        verify_tree();
     }
 
     void insert_node_direct(node_type* node)
@@ -399,7 +431,7 @@ public:
         } else {
             m_root = node;
         }
-        verify_tree(m_root);
+        verify_tree();
     }
 
     bool erase_if_modified(node_type* node, const premodify_cache&)
