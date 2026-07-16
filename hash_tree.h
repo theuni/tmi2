@@ -84,7 +84,7 @@ public:
         return *this;
     }
 
-    hash_tree(hash_tree&& rhs) : m_buckets{std::move(rhs.m_buckets)}, m_key_from_value{std::move(rhs.m_key_from_value)}, m_hasher{std::move(rhs.m_hasher)}, m_pred{std::move(rhs.m_pred)}
+    hash_tree(hash_tree&& rhs) noexcept : m_buckets{std::move(rhs.m_buckets)}, m_key_from_value{std::move(rhs.m_key_from_value)}, m_hasher{std::move(rhs.m_hasher)}, m_pred{std::move(rhs.m_pred)}
     {
         rhs.m_buckets = {};
     }
