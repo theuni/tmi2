@@ -47,6 +47,8 @@ public:
     using node_type = tminode<T, Indices>;
     using node_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<node_type>;
     using inherited_index = typename detail::index_type_helper<T, Indices, Allocator, multi_index_container<T, Indices, Allocator>, 0>::type;
+    using node_pointer = std::allocator_traits<node_allocator_type>::pointer;
+    using value_type = T;
 
     template <int I>
     using indexed_node_type = node_type::template indexed_node_type<I>;
@@ -187,25 +189,36 @@ private:
         }
     }
 
-    template <typename IndexedNode>
-    std::pair<IndexedNode*, bool> do_insert(IndexedNode* indexed)
+    template <int I = 0, class Callable, typename... Args>
+    static bool get_foreach_index(Callable&& func, std::nullptr_t, Args&&... args)
     {
-        indices_hints_tuple hints;
-        
-        node_type* node = node_cast(indexed);
+        if (!func.template operator()<I>(std::get<I>(args)...)) {
+            return false;
+        }
+        else if constexpr (I + 1 < num_indices) {
+            return get_foreach_index<I + 1>(std::forward<Callable>(func), nullptr, std::forward<Args>(args)...);
+        } else {
+            return true;
+        }
+    }
+
+    node_type* do_preinsert_value(const T& value, indices_hints_tuple& hints)
+    {
         node_type* conflict = nullptr;
-        get_foreach_index([&conflict]<int I>(const indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, auto& indexed_hints) TMI_CPP23_STATIC {
-            auto* ret = instance.tmi_preinsert_node(indexed_node, indexed_hints);
+        get_foreach_index([&conflict, &value]<int I>(nth_index_t<I>& instance, auto& indexed_hints) TMI_CPP23_STATIC {
+            auto* ret = instance.tmi_preinsert_node(value, indexed_hints);
             if (ret) {
                 conflict = node_cast(ret);
                 return false;
             }
             return true;
-        }, node, m_index_instances, hints);
+        }, nullptr, m_index_instances, hints);
+        return conflict;
+    }
 
-        if(conflict) {
-            return {indexed_node_cast<IndexedNode>(conflict), false};
-        }
+    void do_insert_node(node_type* node, const indices_hints_tuple& hints)
+    {
+
         foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, const auto& indexed_hints) TMI_CPP23_STATIC {
             instance.tmi_insert_node(indexed_node, indexed_hints);
         }, node, m_index_instances,  hints);
@@ -220,6 +233,17 @@ private:
         }
 
         m_size++;
+    }
+
+    template <typename IndexedNode>
+    std::pair<IndexedNode*, bool> do_reinsert_node(IndexedNode* indexed)
+    {
+        indices_hints_tuple hints;
+        node_type* conflict = do_preinsert_value(indexed->value(), hints);
+        if (conflict) {
+            return {indexed_node_cast<IndexedNode>(conflict), false};
+        }
+        do_insert_node(node_cast(indexed), hints);
         return {indexed, true};
     }
 
@@ -235,52 +259,83 @@ private:
         m_size--;
     }
 
+    template <typename... Args>
+    node_type* construct_impl(Args&&... args)
+    {
+        node_allocator_type node_alloc(get_allocator());
+        node_pointer node = std::allocator_traits<node_allocator_type>::allocate(node_alloc, 1);
+        std::construct_at(std::to_address(node));
+        allocator_type alloc(node_alloc);
+        std::allocator_traits<allocator_type>::construct(alloc, std::addressof(node->value()), std::forward<Args>(args)...);
+        return std::to_address(node);
+    }
+
     void do_destroy_node(node_type* node)
     {
-        std::allocator_traits<node_allocator_type>::destroy(m_alloc, node);
-        std::allocator_traits<node_allocator_type>::deallocate(m_alloc, node, 1);
+        node_allocator_type alloc(m_alloc);
+        node_pointer ptr = std::pointer_traits<node_pointer>::pointer_to(*node);
+        std::allocator_traits<node_allocator_type>::destroy(alloc, std::addressof(node->value()));
+        std::destroy_at(std::to_address(ptr));
+        std::allocator_traits<node_allocator_type>::deallocate(alloc, ptr, 1);
+    }
+
+    template <typename Arg>
+    static constexpr bool is_value_arg()
+    {
+        return std::is_same_v<value_type, std::remove_cvref_t<Arg>>;
+    }
+
+    template <typename... Args, typename Arg>
+    static constexpr bool is_value_arg()
+    {
+        return false;
+    }
+
+    static constexpr bool is_value_arg()
+    {
+        return false;
+    }
+
+    template <typename IndexedNode, typename... Args>
+    std::pair<IndexedNode*,bool> emplace_impl(const IndexedNode*, Args&&... args)
+    {
+        indices_hints_tuple hints;
+        if constexpr(sizeof...(Args) == 1) {
+            if constexpr(is_value_arg<Args...>()) {
+                if (node_type* conflict = do_preinsert_value(args..., hints)) {
+                    return {indexed_node_cast<IndexedNode>(conflict), false};
+                }
+                node_type* node = construct_impl(std::forward<Args>(args)...);
+                do_insert_node(node, hints);
+                return {indexed_node_cast<IndexedNode>(node), true};
+            }
+        }
+        node_type* node = construct_impl(std::forward<Args>(args)...);
+        node_type* conflict = do_preinsert_value(node->value(), hints);
+        if (conflict) {
+            do_destroy_node(node);
+            return {indexed_node_cast<IndexedNode>(conflict), false};
+        }
+        do_insert_node(node, hints);
+        return {indexed_node_cast<IndexedNode>(node), true};
     }
 
     template <typename IndexedNode, typename... Args>
     std::pair<IndexedNode*, bool> do_emplace(Args&&... args)
     {
-        node_type* node = m_alloc.allocate(1);
-        node = std::uninitialized_construct_using_allocator<node_type>(node, m_alloc, std::forward<Args>(args)...);
-        auto ret = do_insert(indexed_node_cast<IndexedNode>(node));
-        const auto& [it, inserted] = ret;
-        if (!inserted) {
-            std::allocator_traits<node_allocator_type>::destroy(m_alloc, node);
-            std::allocator_traits<node_allocator_type>::deallocate(m_alloc, node, 1);
-        }
-        return ret;
+        return emplace_impl<IndexedNode>(nullptr, std::forward<Args>(args)...);
     }
 
     template <typename IndexedNode>
-    std::pair<IndexedNode*, bool> do_insert(const T& entry)
+    std::pair<IndexedNode*, bool> do_insert(const T& value)
     {
-        node_type* node = m_alloc.allocate(1);
-        node = std::uninitialized_construct_using_allocator<node_type>(node, m_alloc, entry);
-        auto ret = do_insert(indexed_node_cast<IndexedNode>(node));
-        const auto& [it, inserted] = ret;
-        if (!inserted) {
-            std::allocator_traits<node_allocator_type>::destroy(m_alloc, node);
-            std::allocator_traits<node_allocator_type>::deallocate(m_alloc, node, 1);
-        }
-        return ret;
+        return emplace_impl<IndexedNode>(nullptr, value);
     }
 
     template <typename IndexedNode>
-    std::pair<IndexedNode*, bool> do_insert(T&& entry)
+    std::pair<IndexedNode*, bool> do_insert(T&& value)
     {
-        node_type* node = m_alloc.allocate(1);
-        node = std::uninitialized_construct_using_allocator<node_type>(node, m_alloc, std::move(entry));
-        auto ret = do_insert(indexed_node_cast<IndexedNode>(node));
-        const auto& [it, inserted] = ret;
-        if (!inserted) {
-            std::allocator_traits<node_allocator_type>::destroy(m_alloc, node);
-            std::allocator_traits<node_allocator_type>::deallocate(m_alloc, node, 1);
-        }
-        return ret;
+        return emplace_impl<IndexedNode>(nullptr, std::move(value));
     }
 
     template <typename IndexedNode>
@@ -348,8 +403,7 @@ private:
         while (node) {
             auto* to_delete = node;
             node = node->next();
-            std::allocator_traits<node_allocator_type>::destroy(m_alloc, to_delete);
-            std::allocator_traits<node_allocator_type>::deallocate(m_alloc, to_delete, 1);
+            do_destroy_node(to_delete);
         }
         m_begin = m_end = nullptr;
     }
@@ -403,32 +457,14 @@ private:
     template <typename IndexedNode>
     static constexpr IndexedNode* value_cast(T& elem)
     {
-#if defined __has_builtin
-#   if __has_builtin (__builtin_offsetof)
-        if constexpr(not_inheritable<T>) {
-#           pragma GCC diagnostic push
-#           pragma GCC diagnostic ignored "-Winvalid-offsetof"
-            static_assert(__builtin_offsetof(node_type, m_val) == 0);
-#           pragma GCC diagnostic pop
-        }
-#   endif
-#endif
+        static_assert(IndexedNode::value_offset() == 0);
         return indexed_node_cast<IndexedNode>(reinterpret_cast<node_type*>(&elem));
     }
 
     template <typename IndexedNode>
     static constexpr const IndexedNode* value_cast(const T& elem)
     {
-#if defined __has_builtin
-#   if __has_builtin (__builtin_offsetof)
-        if constexpr(not_inheritable<T>) {
-#           pragma GCC diagnostic push
-#           pragma GCC diagnostic ignored "-Winvalid-offsetof"
-            static_assert(__builtin_offsetof(node_type, m_val) == 0);
-#           pragma GCC diagnostic pop
-        }
-#   endif
-#endif
+        static_assert(IndexedNode::value_offset() == 0);
         return indexed_node_cast<const IndexedNode>(reinterpret_cast<const node_type*>(&elem));
     }
 
@@ -469,8 +505,7 @@ public:
         m_begin = to_node;
         for(size_t i = 0; i < rhs.m_size; i++)
         {
-            to_node = m_alloc.allocate(1);
-            std::uninitialized_construct_using_allocator<node_type>(to_node, m_alloc, *from_node);
+            to_node = construct_impl(from_node->value());
             if(i == 0) {
                 m_begin = to_node;
             }

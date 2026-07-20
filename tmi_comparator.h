@@ -78,9 +78,9 @@ private:
         tree_type::insert_node_direct(node);
     }
 
-    node_type* tmi_preinsert_node(const node_type* node, insert_hints& hints)
+    node_type* tmi_preinsert_node(const value_type& value, insert_hints& hints)
     {
-        return tree_type::preinsert_node(nullptr, node->value(), hints);
+        return tree_type::preinsert_node(nullptr, value, hints);
     }
 
     void tmi_insert_node(node_type* node, const insert_hints& hints)
@@ -213,7 +213,7 @@ public:
         if(!handle) {
             return {tree_type::end(), false, {}};
         }
-        auto ret = m_parent.do_insert(handle.get());
+        auto ret = m_parent.do_reinsert_node(handle.get());
         const auto& [new_node, inserted] = ret;
         if (!inserted) {
             return {tree_type::make_iterator(new_node), false, std::move(handle)};

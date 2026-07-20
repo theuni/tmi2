@@ -14,49 +14,6 @@
 
 namespace tmi {
 
-template<typename T>
-concept inheritable = !std::is_pointer_v<T> && !std::is_reference_v<T> && !std::is_fundamental_v<T>;
-
-template <class T>
-concept not_inheritable = !inheritable<T>;
-
-template <typename T, typename Indices>
-class tminode;
-
-template <typename T>
-struct Holder;
-
-template <inheritable T>
-struct Holder<T> : protected T
-{
-    template <typename... Args>
-    Holder(Args&&... args) : T(std::forward<Args>(args)...){}
-
-    Holder(const Holder&) = delete;
-    Holder(Holder&&) = delete;
-    Holder operator=(Holder&&) = delete;
-    Holder operator=(const Holder&) = delete;
-
-    constexpr const T& get() const { return *this; }
-    constexpr T& get() { return *this; }
-
-};
-
-template <not_inheritable T>
-struct Holder<T>
-{
-    T m_val;
-    constexpr const T& get() const { return m_val; }
-    constexpr T& get() { return m_val; }
-    template <typename... Args>
-    Holder(Args&&... args) : m_val(std::forward<Args>(args)...){}
-
-    Holder(const Holder&) = delete;
-    Holder(Holder&&) = delete;
-    Holder operator=(Holder&&) = delete;
-    Holder operator=(const Holder&) = delete;
-};
-
 template <typename T, typename Indices, int I>
 class tmi_indexed_node;
 
@@ -67,9 +24,14 @@ template <typename T, typename Indices, int I>
 class tmi_indexed_hash_node;
 
 template <typename T, typename Indices>
-class tminode : public Holder<T>
+class tminode
 {
-protected:
+private:
+    // m_val MUST BE first
+    union {
+        T m_val;
+    };
+
     tminode* m_prev{nullptr};
     tminode* m_next{nullptr};
     struct rb {
@@ -120,13 +82,17 @@ public:
 
     using value_type = T;
 
-    template <typename... Args>
-    tminode(Args&&... args) : Holder<T>(std::forward<Args>(args)...)
+    ~tminode()
     {
     }
 
-    const T& value() const { return Holder<T>::get(); }
-    T& value() { return Holder<T>::get(); }
+    template <typename... Args>
+    tminode(Args&&... args) : m_val(std::forward<Args>(args)...)
+    {
+    }
+
+    const T& value() const { return m_val; }
+    T& value() { return m_val; }
 
     tminode* next() const { return m_next; }
     tminode* prev() const { return m_prev; }
@@ -182,6 +148,20 @@ public:
     void set_next_hashptr(const tmi_indexed_hash_node* rhs)
     {
         std::get<I>(m_data).m_nexthash = const_cast<tmi_indexed_hash_node*>(rhs);
+    }
+
+
+    static consteval size_t value_offset()
+    {
+#if defined __has_builtin
+#   if __has_builtin (__builtin_offsetof)
+#           pragma GCC diagnostic push
+#           pragma GCC diagnostic ignored "-Winvalid-offsetof"
+        return __builtin_offsetof(tmi_indexed_hash_node, m_val);
+#           pragma GCC diagnostic pop
+#   endif
+#endif
+        return 0;
     }
 };
 
@@ -259,6 +239,19 @@ public:
     void reset()
     {
         std::get<I>(m_data) = {};
+    }
+
+    static consteval size_t value_offset()
+    {
+#if defined __has_builtin
+#   if __has_builtin (__builtin_offsetof)
+#           pragma GCC diagnostic push
+#           pragma GCC diagnostic ignored "-Winvalid-offsetof"
+        return __builtin_offsetof(tmi_indexed_comparator_node, m_val);
+#           pragma GCC diagnostic pop
+#   endif
+#endif
+        return 0;
     }
 };
 

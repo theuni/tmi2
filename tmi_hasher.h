@@ -87,7 +87,7 @@ private:
         tree_type::insert_node_direct(node);
     }
 
-    node_type* tmi_preinsert_node(const node_type* node, insert_hints& hints)
+    node_type* tmi_preinsert_node(const value_type& value, insert_hints& hints)
     {
         size_t buckets = tree_type::bucket_count();
 
@@ -96,7 +96,7 @@ private:
         } else if (size() + 1 > static_cast<size_type>(static_cast<float>(buckets) * max_load_factor())) {
             rehash_impl(buckets * 2);
         }
-        return tree_type::preinsert_node(node->value(), hints);
+        return tree_type::preinsert_node(value, hints);
     }
 
     void tmi_create_premodify_cache(const node_type* node, premodify_cache& cache) const
@@ -227,7 +227,7 @@ public:
         if(!handle) {
             return {end(), false, {}};
         }
-        auto ret = m_parent.do_insert(handle.get());
+        auto ret = m_parent.do_reinsert_node(handle.get());
         const auto& [new_node, inserted] = ret;
         if (!inserted) {
             return {tree_type::make_iterator(new_node), false, std::move(handle)};
