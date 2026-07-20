@@ -1,5 +1,6 @@
 #include <test/hashed_non_unique.h>
 #include <test/hashed_unique.h>
+#include <test/iterator_to.h>
 #include <test/ordered_non_unique.h>
 #include <test/ordered_unique.h>
 
@@ -14,6 +15,7 @@ int main(int argc, char *argv[]) {
   if (argc < 2) {
     test_hashed_non_unique();
     test_hashed_unique();
+    test_iterator_to();
     test_ordered_unique();
     test_ordered_non_unique();
 
@@ -29,6 +31,10 @@ int main(int argc, char *argv[]) {
   }
   if (name == "hashed_unique") {
     test_hashed_unique();
+    return ExitStatus::Success;
+  }
+  if (name == "iterator_to") {
+    test_iterator_to();
     return ExitStatus::Success;
   }
   if (name == "ordered_unique") {

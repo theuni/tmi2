@@ -46,6 +46,7 @@ target_include_directories(common_interface INTERFACE ${CMAKE_SOURCE_DIR})
 add_executable(tmi-test test/test.cpp
     test/hashed_unique.cpp
     test/hashed_non_unique.cpp
+    test/iterator_to.cpp
     test/ordered_unique.cpp
     test/ordered_non_unique.cpp
     test/stdset.cpp
