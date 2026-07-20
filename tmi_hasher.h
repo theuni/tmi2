@@ -71,8 +71,8 @@ private:
 
     tmi_hasher(Parent& parent, const ctor_args& args) : tree_type(std::get<0>(args), std::get<1>(args), std::get<2>(args), std::get<3>(args)), m_parent(parent) {}
 
-    tmi_hasher(Parent& parent, const tmi_hasher& rhs) : tree_type(static_cast<tree_type&>(rhs)), m_parent(parent){}
-    tmi_hasher(Parent& parent, tmi_hasher&& rhs) : tree_type(std::move(static_cast<tree_type&>(rhs))), m_parent(parent)
+    tmi_hasher(Parent& parent, const tmi_hasher& rhs) : tree_type(rhs), m_parent(parent){}
+    tmi_hasher(Parent& parent, tmi_hasher&& rhs) : tree_type(std::move(rhs)), m_parent(parent)
     {
     }
 
