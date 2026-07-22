@@ -60,10 +60,9 @@ void CompileTest<T>::test_insert()
 {
     T foo{};
     auto it = std_multiset.insert(T{});
-    const auto& [it2, inserted]  = tmi_multiset_view.insert(foo);
+    auto it2 = tmi_multiset_view.insert(foo);
 
     assert(it != std_multiset.end());
-    assert(inserted);
     assert(it2 != tmi_multiset_view.end());
 }
 
@@ -88,10 +87,9 @@ template <typename T>
 void CompileTest<T>::test_emplace()
 {
         auto it = std_multiset.emplace(T{});
-        const auto& [it2, inserted]  = tmi_multiset_view.emplace(T{});
+        const auto it2 = tmi_multiset_view.emplace(T{});
 
         assert(it != std_multiset.end());
-        assert(inserted);
         assert(*it2 == T{});
         assert(it2 != tmi_multiset_view.end());
 }
@@ -116,11 +114,9 @@ void CompileTest<T>::test_extract()
         assert(nh2.get_allocator() == tmi_multiset_view.get_allocator());
 
         auto it = std_multiset.insert(std::move(nh));
-        auto ret2 = tmi_multiset_view.insert(std::move(nh2));
+        auto it2 = tmi_multiset_view.insert(std::move(nh2));
         assert(it != std_multiset.end());
-        assert(ret2.inserted);
-        assert(*ret2.position == *it);
-        assert(ret2.node.empty());
+        assert(it2 != tmi_multiset_view.end());
 
 /*
         auto nh = std_multiset.extract(T{});

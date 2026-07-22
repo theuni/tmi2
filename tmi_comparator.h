@@ -6,6 +6,7 @@
 #define TMI_COMPARATOR_H_
 
 #include "tmi_nodehandle.h"
+#include "tmi_index.h"
 #include "wavl_tree.h"
 
 #include <cassert>
@@ -16,42 +17,44 @@
 
 namespace tmi {
 
-namespace detail {
-template <typename IndexedNode, typename Comparator, typename Allocator>
-struct tmi_comparator_helper
+template <typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator>
+class tmi_comparator : private wavl_tree<IndexedNode, typename IndexedNode::value_type, KeyFromValue, Comparator, Allocator, Unique>
 {
-    using node_type = IndexedNode;
-    using value_type = node_type::value_type;
-    using key_from_value = typename Comparator::key_from_value_type;
-    using key_compare = typename Comparator::comparator;
-    using tree_type = wavl_tree<node_type, value_type, key_from_value, key_compare, Allocator, Comparator::is_ordered_unique()>;
-};
-} // namespace detail
-
-template <typename IndexedNode, typename Comparator, typename Parent, typename Allocator>
-class tmi_comparator : private detail::tmi_comparator_helper<IndexedNode, Comparator, Allocator>::tree_type
-{
+    using tree_type = wavl_tree<IndexedNode, typename IndexedNode::value_type, KeyFromValue, Comparator, Allocator, Unique>;
+    using tree_type::unique_keys;
 public:
 
-    using helper_type = detail::tmi_comparator_helper<IndexedNode, Comparator, Allocator>;
-    using node_type = helper_type::node_type;
-    using key_from_value = helper_type::key_from_value;
-    using tree_type = helper_type::tree_type;
-    using key_compare = typename Comparator::comparator;
-    using key_type = typename key_from_value::result_type;
-    using ctor_args = std::tuple<key_from_value,key_compare>;
+    using data_type = IndexedNode;
+    using key_from_value = KeyFromValue;
+    using node_type = detail::node_handle<Allocator, data_type>;
+
+    using key_type = tree_type::key_type;
+    using value_type = tree_type::value_type;
+    using key_compare = tree_type::key_compare_type;
+    using value_compare = key_compare;
     using allocator_type = Allocator;
-    using node_handle = detail::node_handle<Allocator, node_type>;
+    using reference = value_type&;
+    using const_reference = const value_type&;
+    using size_type = tree_type::size_type;
+    using difference_type = tree_type::difference_type;
+    using pointer = std::allocator_traits<allocator_type>::pointer;
+    using const_pointer = std::allocator_traits<allocator_type>::const_pointer;
+
     using iterator = tree_type::iterator;
     using const_iterator = tree_type::const_iterator;
-    using insert_return_type = detail::insert_return_type<iterator, node_handle>;
-    using value_type = node_type::value_type;
+    using reverse_iterator = tree_type::reverse_iterator;
+    using const_reverse_iterator = tree_type::const_reverse_iterator;
+    using insert_return_type = std::conditional_t<!unique_keys() && IsOnlyIndex, iterator, tmi::detail::insert_return_type<iterator, node_type>>;
 
 private:
     friend Parent;
 
     using insert_hints = tree_type::insert_hints;
     using premodify_cache = tree_type::premodify_cache;
+    using insert_result_type = std::conditional_t<!unique_keys() && IsOnlyIndex, iterator, std::pair<iterator, bool>>;
+    using ctor_args = std::tuple<key_from_value,key_compare>;
+    using insert_hints_type = tree_type::insert_hints;
+
     static constexpr bool requires_premodify_cache() { return tree_type::requires_premodify_cache(); }
 
     Parent& m_parent;
@@ -67,28 +70,28 @@ private:
     tmi_comparator& operator=(const tree_type&) = delete;
     tmi_comparator& operator=(tree_type&&) = delete;
 
-    void tmi_remove_node(node_type* node)
+    void tmi_remove_node(data_type* node)
     {
         iterator it = tree_type::make_iterator(node);
         tree_type::erase(it);
     }
 
-    void tmi_insert_node_direct(node_type* node)
+    void tmi_insert_node_direct(data_type* node)
     {
         tree_type::insert_node_direct(node);
     }
 
-    node_type* tmi_preinsert_node(const value_type& value, insert_hints& hints)
+    data_type* tmi_preinsert_node(const value_type& value, insert_hints& hints)
     {
         return tree_type::preinsert_node(nullptr, value, hints);
     }
 
-    void tmi_insert_node(node_type* node, const insert_hints& hints)
+    void tmi_insert_node(data_type* node, const insert_hints& hints)
     {
         tree_type::insert_node(node, hints);
     }
 
-    bool tmi_erase_if_modified(node_type* node, const premodify_cache& cache)
+    bool tmi_erase_if_modified(data_type* node, const premodify_cache& cache)
     {
         return tree_type::erase_if_modified(node, cache);
     }
@@ -98,90 +101,175 @@ private:
         tree_type::release();
     }
 
+    insert_result_type make_insert_result(std::pair<data_type*, bool> result)
+    {
+        if constexpr(!unique_keys() && IsOnlyIndex) {
+            return tree_type::make_iterator(result.first);
+        } else {
+            return std::make_pair(tree_type::make_iterator(result.first), result.second);
+        }
+    }
+
+    insert_return_type make_insert_return(data_type* node, bool inserted, node_type&& nh)
+    {
+        if constexpr(!unique_keys() && IsOnlyIndex) {
+            return tree_type::make_iterator(node);
+        } else {
+            return {tree_type::make_iterator(node), inserted, std::move(nh)};
+        }
+    }
+
+    template <class... Args>
+    std::pair<data_type*,bool> emplace_impl(const data_type* node_hint, Args&&... args)
+    {
+        insert_hints_type hints;
+        if constexpr(sizeof...(Args) == 1) {
+            if constexpr(is_value_arg<Args...>()) {
+            data_type* conflict = tree_type::preinsert_node(node_hint, args..., hints);
+            if (conflict) {
+                return {conflict, false};
+            }
+            data_type* node = construct_impl(std::forward<Args>(args)...);
+            insert_impl(node, hints);
+            return {node, true};
+        }
+        }
+        data_type* node = construct_impl(std::forward<Args>(args)...);
+        data_type* conflict = tree_type::preinsert_node(node_hint, node->value(), hints);
+        if(conflict) {
+            destroy_impl(node);
+            return {conflict, false};
+        }
+        insert_impl(node, hints);
+        return {node, true};
+    }
+
 public:
 
-    template <typename... Args>
-    std::pair<iterator,bool> emplace(Args&&... args)
+    insert_result_type insert(const value_type& v)
     {
-        auto [node, success] = m_parent.template do_emplace<node_type>(std::forward<Args>(args)...);
-        return std::make_pair(tree_type::make_iterator(node), success);
+        auto result = m_parent.template do_insert<data_type>(v);
+        return make_insert_result(std::move(result));
     }
 
-    std::pair<iterator,bool> insert(const value_type& value)
+    insert_result_type insert(value_type&& v)
     {
-        auto [node, success] = m_parent.template do_insert<node_type>(value);
-        return std::make_pair(tree_type::make_iterator(node), success);
+        auto result = m_parent.template do_insert<data_type>(std::move(v));
+        return make_insert_result(std::move(result));
     }
 
-    std::pair<iterator,bool> insert(value_type&& value)
+    iterator insert(const_iterator position, const value_type& v)
     {
-        auto [node, success] = m_parent.template do_insert<node_type>(std::move(value));
-        return std::make_pair(tree_type::make_iterator(node), success);
+        const data_type* node_hint = tree_type::node_from_iterator(position);
+        auto result = m_parent.template do_insert_hint<data_type>(node_hint, v);
+        return make_insert_result(std::move(result));
     }
 
-    iterator begin() const
+    iterator insert(const_iterator position, value_type&& v)
     {
-        return tree_type::begin();
+        const data_type* node_hint = tree_type::node_from_iterator(position);
+        auto result = m_parent.template do_insert_hint<data_type>(node_hint, std::move(v));
+        return make_insert_result(std::move(result));
     }
 
-    iterator end() const
+    template <class InputIterator>
+    void insert(InputIterator first, InputIterator last)
     {
-        return tree_type::end();
+        for(auto it = first; it != last; ++it) {
+            insert(*it);
+        }
     }
 
-    const_iterator iterator_to(const value_type& entry) const
+    void insert(std::initializer_list<value_type> il)
     {
-        const node_type* node = Parent::template value_cast<node_type>(entry);
-        return tree_type::make_iterator(node);
+        insert(il.begin(), il.end());
     }
 
-    iterator iterator_to(const value_type& entry)
+    template <class... Args>
+    insert_result_type emplace(Args&&... args)
     {
-        node_type* node = Parent::template value_cast<node_type>(const_cast<value_type&>(entry));
-        return tree_type::make_iterator(node);
+        auto result = m_parent.template do_emplace<data_type>(std::forward<Args>(args)...);
+        return make_insert_result(std::move(result));
     }
 
-    template <typename Callable>
-    bool modify(iterator it, Callable&& func)
+    template <class... Args>
+    iterator emplace_hint(const_iterator position, Args&&... args)
     {
-        node_type* node = const_cast<node_type*>(tree_type::node_from_iterator(it));
-        if (!node) return false;
-        return m_parent.do_modify(node, std::forward<Callable>(func));
+        const data_type* node_hint = tree_type::node_from_iterator(position);
+        auto result = m_parent.template do_emplace_hint<data_type>(node_hint, std::forward<Args>(args)...);
+        return make_insert_result(std::move(result));
     }
 
-    template<typename CompatibleKey>
-    iterator find(const CompatibleKey& key) const
+    node_type extract(const_iterator position)
     {
-        return tree_type::find(key);
+        const data_type* node = tree_type::node_from_iterator(position);
+        return m_parent.do_extract(const_cast<data_type*>(node));
     }
 
-    template<typename CompatibleKey>
-    iterator lower_bound(const CompatibleKey& key) const
+    node_type extract(const key_type& x)
     {
-        return tree_type::lower_bound(key);
+        const_iterator position = find(x);
+        return extract(position);
     }
 
-    template<typename CompatibleKey>
-    iterator upper_bound(const CompatibleKey& key) const
+    insert_return_type insert(node_type&& handle)
     {
-        return tree_type::upper_bound(key);
+
+        if(!handle) {
+            return make_insert_return(nullptr, false, {});
+        }
+        auto ret = m_parent.do_reinsert_node(handle.get());
+        const auto& [new_node, inserted] = ret;
+        if (!inserted) {
+            return make_insert_return(new_node, false, std::move(handle));
+        }
+        handle.release();
+        return make_insert_return(new_node, true, {});
     }
 
-    template<typename CompatibleKey>
-    size_t count(const CompatibleKey& key) const
+    iterator insert(const_iterator, node_type&& nh)
     {
-        return tree_type::count(key);
+        //TODO: hint optimization
+        if constexpr(!unique_keys()) {
+            return insert(std::move(nh));
+        } else {
+            return insert(std::move(nh)).position;
+        }
     }
 
-    iterator erase(iterator it)
+    using tree_type::begin;
+    using tree_type::end;
+    using tree_type::rbegin;
+    using tree_type::rend;
+    using tree_type::cbegin;
+    using tree_type::cend;
+    using tree_type::crbegin;
+    using tree_type::crend;
+
+    size_type size() const noexcept
     {
-        node_type* node = const_cast<node_type*>(tree_type::node_from_iterator(it));
+        return m_parent.size();
+    }
+
+    [[nodiscard]] bool empty() const noexcept
+    {
+        return m_parent.empty();
+    }
+
+    size_type max_size() const noexcept
+    {
+        return m_parent.max_size();
+    }
+
+    iterator erase(const_iterator it)
+    {
+        data_type* node = const_cast<data_type*>(tree_type::node_from_iterator(it));
         ++it;
         m_parent.do_erase(node);
         return it;
     }
 
-    size_t erase(const key_type& key) const
+    size_type erase(const key_type& key)
     {
         size_t ret{0};
         auto [first, last] = tree_type::equal_range(key);
@@ -193,49 +281,160 @@ public:
         return ret;
     }
 
-    void clear()
+    iterator erase(const_iterator first, const_iterator last)
+    {
+        auto it = first;
+        while(it != last) it = erase(it);
+        return it;
+    }
+
+    void clear() noexcept
     {
         m_parent.do_clear();
     }
 
-    size_t size() const
+    using tree_type::key_comp;
+    using tree_type::value_comp;
+
+    [[nodiscard]] iterator find(const key_type& k)
     {
-        return m_parent.size();
+        return tree_type::find(k);
     }
 
-    bool empty() const
+    [[nodiscard]] const_iterator find(const key_type& k) const
     {
-        return m_parent.empty();
+        return tree_type::find(k);
     }
 
-    insert_return_type insert(node_handle&& handle)
+    template <typename K, class Comp = key_compare, std::enable_if_t<detail::is_transparent_v<Comp>, int> = 0>
+    [[nodiscard]] iterator find(const K& k)
     {
-        if(!handle) {
-            return {tree_type::end(), false, {}};
-        }
-        auto ret = m_parent.do_reinsert_node(handle.get());
-        const auto& [new_node, inserted] = ret;
-        if (!inserted) {
-            return {tree_type::make_iterator(new_node), false, std::move(handle)};
-        }
-        handle.release();
-        return {tree_type::make_iterator(new_node), true, {}};
+        return tree_type::find(k);
     }
 
-    node_handle extract(const_iterator it)
+    template <typename K, class Comp = key_compare, std::enable_if_t<detail::is_transparent_v<Comp>, int> = 0>
+    [[nodiscard]] const_iterator find(const K& k) const
     {
-        const node_type* node = tree_type::node_from_iterator(it);
-        return m_parent.do_extract(const_cast<node_type*>(node));
+        return tree_type::find(k);
     }
 
-    allocator_type get_allocator() const noexcept
+    template <typename K, class Comp = key_compare, std::enable_if_t<detail::is_transparent_v<Comp>, int> = 0>
+    [[nodiscard]] size_type count(const K& x) const
+    {
+        return tree_type::count(x);
+    }
+
+    [[nodiscard]] size_type count(const key_type& k) const
+    {
+        return tree_type::count(k);
+    }
+
+    [[nodiscard]] bool contains(const key_type& x) const
+    {
+        return tree_type::contains(x);
+    }
+
+    template <typename K, class Comp = key_compare, std::enable_if_t<detail::is_transparent_v<Comp>, int> = 0>
+    [[nodiscard]] bool contains(const K& x) const
+    {
+        return tree_type::contains(x);
+    }
+
+    [[nodiscard]] iterator lower_bound(const key_type& k)
+    {
+        return tree_type::lower_bound(k);
+    }
+
+    [[nodiscard]] const_iterator lower_bound(const key_type& k) const
+    {
+        return tree_type::lower_bound(k);
+    }
+
+    template <typename K, class Comp = key_compare, std::enable_if_t<detail::is_transparent_v<Comp>, int> = 0>
+    [[nodiscard]] iterator lower_bound(const K& x)
+    {
+        return tree_type::lower_bound(x);
+    }
+
+    template <typename K, class Comp = key_compare, std::enable_if_t<detail::is_transparent_v<Comp>, int> = 0>
+    [[nodiscard]] const_iterator lower_bound(const K& x) const
+    {
+        return tree_type::lower_bound(x);
+    }
+
+    [[nodiscard]] iterator upper_bound(const key_type& k)
+    {
+        return tree_type::upper_bound(k);
+    }
+
+    [[nodiscard]] const_iterator upper_bound(const key_type& k) const
+    {
+        return tree_type::upper_bound(k);
+    }
+
+    template <typename K, class Comp = key_compare, std::enable_if_t<detail::is_transparent_v<Comp>, int> = 0>
+    [[nodiscard]] iterator upper_bound(const K& x)
+    {
+        return tree_type::upper_bound(x);
+    }
+
+    template <typename K, class Comp = key_compare, std::enable_if_t<detail::is_transparent_v<Comp>, int> = 0>
+    [[nodiscard]] const_iterator upper_bound(const K& x) const
+    {
+        return tree_type::upper_bound(x);
+    }
+
+    [[nodiscard]] std::pair<iterator,iterator> equal_range(const key_type& k)
+    {
+        return tree_type::equal_range(k);
+    }
+
+    [[nodiscard]] std::pair<const_iterator,const_iterator> equal_range(const key_type& k) const
+    {
+        return tree_type::equal_range(k);
+    }
+
+    template <typename K, class Comp = key_compare, std::enable_if_t<detail::is_transparent_v<Comp>, int> = 0>
+    [[nodiscard]] std::pair<iterator,iterator> equal_range(const K& x)
+    {
+        return tree_type::equal_range(x);
+    }
+
+    template <typename K, class Comp = key_compare, std::enable_if_t<detail::is_transparent_v<Comp>, int> = 0>
+    [[nodiscard]] std::pair<const_iterator,const_iterator> equal_range(const K& x) const
+    {
+        return tree_type::equal_range(x);
+    }
+
+
+    [[nodiscard]] allocator_type get_allocator() const noexcept
     {
         return m_parent.get_allocator();
     }
 
-    const_iterator make_iterator(const node_type* node) const
+    const_iterator make_iterator(const data_type* node) const
     {
         return tree_type::make_iterator(node);
+    }
+
+    const_iterator iterator_to(const value_type& entry) const
+    {
+        const data_type* node = Parent::template value_cast<data_type>(entry);
+        return tree_type::make_iterator(node);
+    }
+
+    iterator iterator_to(const value_type& entry)
+    {
+        data_type* node = Parent::template value_cast<data_type>(const_cast<value_type&>(entry));
+        return tree_type::make_iterator(node);
+    }
+
+    template <typename Callable>
+    bool modify(iterator it, Callable&& func)
+    {
+        data_type* node = const_cast<data_type*>(tree_type::node_from_iterator(it));
+        if (!node) return false;
+        return m_parent.do_modify(node, std::forward<Callable>(func));
     }
 
 };

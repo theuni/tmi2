@@ -29,9 +29,29 @@ struct index_type_helper
     using node_type = tminode<T, Indices>;
     using index_type = std::tuple_element_t<I, index_types>;
     using indexed_node_type = typename node_type::template indexed_node_type<I>;
-    using comparator = tmi_comparator<indexed_node_type, index_type, Parent, Allocator>;
     using hasher = tmi_hasher<indexed_node_type, index_type, Parent, Allocator>;
-    using type = std::conditional_t<std::is_base_of_v<hashed_type, index_type>, hasher, comparator>;
+    static constexpr size_t num_indices = std::tuple_size<index_types>();
+
+    template <typename IndexType, typename BaseType = typename IndexType::base_type>
+    struct index_base_type
+    {
+        static_assert(false, "must specialize base type");
+    };
+
+    template <typename IndexType>
+    struct index_base_type<IndexType, detail::hashed_type>
+    {
+        using type = tmi_hasher<indexed_node_type, index_type, Parent, Allocator>;
+    };
+
+    template <typename IndexType>
+    struct index_base_type<IndexType, detail::ordered_type>
+    {
+        using type = tmi_comparator<indexed_node_type, index_type::is_unique(), num_indices == 1, typename index_type::comparator, typename index_type::key_from_value_type, Parent, Allocator>;
+    };
+
+    using type = index_base_type<index_type>::type;
+
     using allocator_type = Allocator;
 };
 
@@ -145,7 +165,7 @@ public:
     template <typename, typename, typename, typename>
     friend class tmi_hasher;
 
-    template <typename, typename, typename, typename>
+    template <typename, bool, bool, typename, typename, typename, typename>
     friend class tmi_comparator;
 
 private:
@@ -202,7 +222,7 @@ private:
         }
     }
 
-    node_type* do_preinsert_value(const T& value, indices_hints_tuple& hints)
+    node_type* do_preinsert_value(const T& value, indices_hints_tuple& hints) const
     {
         node_type* conflict = nullptr;
         get_foreach_index([&conflict, &value]<int I>(nth_index_t<I>& instance, auto& indexed_hints) TMI_CPP23_STATIC {
@@ -326,6 +346,12 @@ private:
         return emplace_impl<IndexedNode>(nullptr, std::forward<Args>(args)...);
     }
 
+    template <typename IndexedNode, typename... Args>
+    std::pair<IndexedNode*, bool> do_emplace_hint(IndexedNode* node_hint, Args&&... args)
+    {
+        return emplace_impl<IndexedNode>(node_hint, std::forward<Args>(args)...);
+    }
+
     template <typename IndexedNode>
     std::pair<IndexedNode*, bool> do_insert(const T& value)
     {
@@ -336,6 +362,18 @@ private:
     std::pair<IndexedNode*, bool> do_insert(T&& value)
     {
         return emplace_impl<IndexedNode>(nullptr, std::move(value));
+    }
+
+    template <typename IndexedNode>
+    std::pair<IndexedNode*, bool> do_insert_hint(IndexedNode* node_hint, const T& value)
+    {
+        return emplace_impl<IndexedNode>(node_hint, value);
+    }
+
+    template <typename IndexedNode>
+    std::pair<IndexedNode*, bool> do_insert_hint(IndexedNode* node_hint, T&& value)
+    {
+        return emplace_impl<IndexedNode>(node_hint, std::move(value));
     }
 
     template <typename IndexedNode>

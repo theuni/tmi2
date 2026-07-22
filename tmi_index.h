@@ -87,25 +87,29 @@ struct identity
 template < typename Arg1, typename Arg2=void, typename Arg3=void, typename Arg4=void>
 struct hashed_unique : detail::hashed_type, public detail::hashed_args<Arg1, Arg2, Arg3, Arg4>
 {
-    static constexpr bool is_hashed_unique() { return true; }
+    using base_type = detail::hashed_type;
+    static constexpr bool is_unique() { return true; }
 };
 
 template < typename Arg1, typename Arg2=void, typename Arg3=void, typename Arg4=void>
 struct hashed_non_unique : detail::hashed_type, public detail::hashed_args<Arg1, Arg2, Arg3, Arg4>
 {
-    static constexpr bool is_hashed_unique() { return false; }
+    using base_type = detail::hashed_type;
+    static constexpr bool is_unique() { return false; }
 };
 
 template<typename Arg1, typename Arg2 = void, typename Arg3 = void>
 struct ordered_unique : detail::ordered_type, public detail::ordered_args<Arg1, Arg2, Arg3>
 {
-    static constexpr bool is_ordered_unique() { return true; }
+    using base_type = detail::ordered_type;
+    static constexpr bool is_unique() { return true; }
 };
 
 template<typename Arg1, typename Arg2 = void, typename Arg3 = void>
 struct ordered_non_unique : detail::ordered_type, public detail::ordered_args<Arg1, Arg2, Arg3>
 {
-    static constexpr bool is_ordered_unique() { return false; }
+    using base_type = detail::ordered_type;
+    static constexpr bool is_unique() { return false; }
 };
 
 template<typename... Indices>

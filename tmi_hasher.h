@@ -30,7 +30,7 @@ struct tmi_hasher_helper
     using value_type = typename node_type::value_type;
     using hasher = typename Hasher::hasher_type;
     using key_equal = typename Hasher::pred_type;
-    using tree_type = hash_tree<node_type, value_type, key_from_value, hasher, key_equal, Allocator, Hasher::is_hashed_unique()>;
+    using tree_type = hash_tree<node_type, value_type, key_from_value, hasher, key_equal, Allocator, Hasher::is_unique()>;
 };
 } // namespace detail
 

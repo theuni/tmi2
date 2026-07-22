@@ -133,7 +133,7 @@ public:
     }
 
     template <typename CompatibleKey>
-    node_type* preinsert_node(const CompatibleKey& val, insert_hints& hints)
+    node_type* preinsert_node(const CompatibleKey& val, insert_hints& hints) const
     {
         const auto& key = m_key_from_value(val);
         const size_t hash = m_hasher(key);

@@ -9,7 +9,7 @@ namespace tmi{
 template <typename, typename, typename>
 class multi_index_container;
 
-template <typename, typename, typename, typename>
+template <typename, bool, bool, typename, typename, typename, typename>
 class tmi_comparator;
 
 template <typename, typename, typename, typename>
