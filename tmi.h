@@ -222,7 +222,7 @@ private:
         }
     }
 
-    node_type* do_preinsert_value(const T& value, indices_hints_tuple& hints) const
+    node_type* do_preinsert_value(const T& value, indices_hints_tuple& hints)
     {
         node_type* conflict = nullptr;
         get_foreach_index([&conflict, &value]<int I>(nth_index_t<I>& instance, auto& indexed_hints) TMI_CPP23_STATIC {
