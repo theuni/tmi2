@@ -37,6 +37,7 @@ struct tmi_hasher_helper
 template <typename IndexedNode, typename Hasher, typename Parent, typename Allocator>
 class tmi_hasher : private detail::tmi_hasher_helper<IndexedNode, Hasher, Allocator>::tree_type
 {
+    struct ConstructionKey { constexpr ConstructionKey() noexcept = default; };
 public:
     using helper_type = detail::tmi_hasher_helper<IndexedNode, Hasher, Allocator>;
     using node_type = helper_type::node_type;
@@ -68,8 +69,13 @@ private:
     buckets_type m_buckets{};
 
     tmi_hasher(Parent& parent) : m_parent(parent) {}
-
-    tmi_hasher(Parent& parent, const ctor_args& args) : tree_type(std::get<0>(args), std::get<1>(args), std::get<2>(args), std::get<3>(args)), m_parent(parent) {}
+public:
+    tmi_hasher(ConstructionKey, Parent& parent, const key_from_value& kv, const hasher& h, const key_equal& ke) : tree_type(kv, h, ke), m_parent(parent) {}
+    tmi_hasher(ConstructionKey, Parent& parent, size_type bucket_count, const key_from_value& kv, const hasher& h, const key_equal& ke) : tree_type(kv, h, ke), m_parent(parent)
+    {
+        rehash_impl(bucket_count);
+    }
+private:
 
     tmi_hasher(Parent& parent, const tmi_hasher& rhs) : tree_type(rhs), m_parent(parent){}
     tmi_hasher(Parent& parent, tmi_hasher&& rhs) : tree_type(std::move(rhs)), m_parent(parent)

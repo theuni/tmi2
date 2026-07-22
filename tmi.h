@@ -144,7 +144,7 @@ public:
         using premodify_cache_types = std::tuple<typename nth_index_t<First>::premodify_cache, typename nth_index_t<ints>::premodify_cache ...>;
 
         static index_types make_index_types(parent_type& parent, const ctor_args_types& args) {
-            return std::make_tuple(std::ref(parent), nth_index_t<ints>(parent, std::get<ints>(args)) ...);
+            return std::make_tuple(std::ref(parent), std::make_from_tuple<nth_index_t<ints>>(std::tuple_cat(std::make_tuple(typename nth_index_t<ints>::ConstructionKey{}, std::ref(parent)), std::get<ints>(args)))...);
         }
         static index_types make_index_types(parent_type& parent, const index_types& rhs) {
             return std::make_tuple(std::ref(parent), nth_index_t<ints>(parent, std::get<ints>(rhs)) ...);
@@ -525,7 +525,7 @@ public:
     }
 
     multi_index_container(const ctor_args_list& args, const allocator_type& alloc = {})
-        : inherited_index(*this, std::get<0>(args)),
+        : inherited_index(std::make_from_tuple<inherited_index>(std::tuple_cat(std::make_tuple(typename inherited_index::ConstructionKey{}, std::ref(*this)), std::get<0>(args)))),
           m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this, args)),
           m_alloc(alloc)
     {

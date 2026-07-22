@@ -22,6 +22,8 @@ class tmi_comparator : private wavl_tree<IndexedNode, typename IndexedNode::valu
 {
     using tree_type = wavl_tree<IndexedNode, typename IndexedNode::value_type, KeyFromValue, Comparator, Allocator, Unique>;
     using tree_type::unique_keys;
+
+    struct ConstructionKey { constexpr ConstructionKey() noexcept = default; };
 public:
 
     using data_type = IndexedNode;
@@ -58,10 +60,13 @@ private:
     static constexpr bool requires_premodify_cache() { return tree_type::requires_premodify_cache(); }
 
     Parent& m_parent;
-
+public:
+    tmi_comparator(ConstructionKey, Parent& parent, const key_from_value& kv, const key_compare& kc) : tree_type{kv, kc}, m_parent(parent){}
+    tmi_comparator(ConstructionKey, Parent& parent, const key_from_value& kv) : tree_type{kv, key_compare{}}, m_parent(parent){}
+    tmi_comparator(ConstructionKey, Parent& parent, const key_compare& kc) : tree_type{key_from_value{}, kc}, m_parent(parent){}
+private:
     tmi_comparator(Parent& parent) : m_parent(parent){}
 
-    tmi_comparator(Parent& parent, const ctor_args& args) : tree_type{std::get<0>(args), std::get<1>(args)}, m_parent(parent){}
     tmi_comparator(Parent& parent, const tmi_comparator& rhs) : tree_type{rhs}, m_parent(parent){}
     tmi_comparator(Parent& parent, tmi_comparator&& rhs) : tree_type{std::move(rhs)}, m_parent(parent){}
 
