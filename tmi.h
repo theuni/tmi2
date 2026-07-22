@@ -377,13 +377,20 @@ private:
     }
 
     template <typename IndexedNode>
-    void do_erase(IndexedNode* indexed)
+    void do_unlink(IndexedNode* indexed)
     {
         node_type* node = node_cast(indexed);
         foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance) TMI_CPP23_STATIC {
             instance.tmi_remove_node(indexed_node);
         }, node, m_index_instances);
         do_erase_cleanup(node);
+    }
+
+    template <typename IndexedNode>
+    void do_erase(IndexedNode* indexed)
+    {
+        do_unlink(indexed);
+        node_type* node = node_cast(indexed);
         do_destroy_node(node);
     }
 

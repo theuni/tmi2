@@ -119,6 +119,24 @@ private:
         }
     }
 
+    void unlink_node(data_type* node)
+    {
+        m_parent.do_unlink(node);
+    }
+
+    template<class S2>
+    void merge_impl(S2&& source)
+    {
+        for(auto it = source.begin(); it != source.end();)
+        {
+            data_type* node = source.node_from_iterator(it++);
+            const auto& [_, inserted] = m_parent.do_reinsert_node(node);
+            if (inserted) {
+                source.unlink_node(node);
+            }
+        }
+    }
+
     template <class... Args>
     std::pair<data_type*,bool> emplace_impl(const data_type* node_hint, Args&&... args)
     {
@@ -404,6 +422,30 @@ public:
     [[nodiscard]] std::pair<const_iterator,const_iterator> equal_range(const K& x) const
     {
         return tree_type::equal_range(x);
+    }
+
+    template<class C2>
+    void merge(tmi_comparator<IndexedNode, Unique, IsOnlyIndex, C2, KeyFromValue, Parent, Allocator>& source)
+    {
+        merge_impl(source);
+    }
+
+    template<class C2>
+    void merge(tmi_comparator<IndexedNode, Unique, IsOnlyIndex, C2, KeyFromValue, Parent, Allocator>&& source)
+    {
+        merge_impl(std::move(source));
+    }
+
+    template<class C2>
+    void merge(tmi_comparator<IndexedNode, !Unique, IsOnlyIndex, C2, KeyFromValue, Parent, Allocator>& source)
+    {
+        merge_impl(source);
+    }
+
+    template<class C2>
+    void merge(tmi_comparator<IndexedNode, !Unique, IsOnlyIndex, C2, KeyFromValue, Parent, Allocator>&& source)
+    {
+        merge_impl(std::move(source));
     }
 
 
