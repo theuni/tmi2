@@ -55,6 +55,11 @@ struct index_type_helper
     using allocator_type = Allocator;
 };
 
+    template<typename T>
+    concept HasValueCompare = requires {
+        typename T::value_compare;
+    };
+
 } // namespace detail
 
 template <typename T, typename Indices = indexed_by<ordered_unique<identity<T>>>, typename Allocator = std::allocator<T>>
@@ -518,10 +523,98 @@ private:
 
 public:
 
-    multi_index_container(const allocator_type& alloc = {})
-        : inherited_index(*this),
+    using inherited_construction_key = inherited_index::ConstructionKey;
+
+    multi_index_container()
+        noexcept(
+            std::is_nothrow_default_constructible<allocator_type>::value &&
+            std::is_nothrow_default_constructible<inherited_index>::value)
+        requires(num_indices == 1)
+        : inherited_index(inherited_construction_key{}, *this)
+        , m_index_instances(*this)
+    {}
+
+    template <detail::HasValueCompare U = inherited_index>
+    explicit multi_index_container(const typename U::value_compare& comp) requires(num_indices == 1)
+        : inherited_index(inherited_construction_key{}, *this, comp)
+        , m_index_instances(*this)
+    {}
+
+    template <detail::HasValueCompare U = inherited_index>
+    multi_index_container(const typename U::value_compare& comp, const allocator_type& a) requires(num_indices == 1)
+        : inherited_index(inherited_construction_key{}, *this, comp)
+        , m_index_instances(*this)
+        , m_alloc(a)
+    {}
+
+    template <class InputIterator, detail::HasValueCompare U = inherited_index>
+    multi_index_container(InputIterator first, InputIterator last, const typename U::value_compare& comp = typename U::value_compare()) requires(num_indices == 1) : multi_index_container(comp)
+    {
+        insert(first, last);
+    }
+
+    template <class InputIterator, detail::HasValueCompare U = inherited_index>
+    multi_index_container(InputIterator first, InputIterator last, const typename U::value_compare& comp, const allocator_type& a) requires(num_indices == 1) : multi_index_container(comp, a)
+    {
+        inherited_index::insert(first, last);
+    }
+
+    multi_index_container(const multi_index_container & s) requires(num_indices == 1) : multi_index_container(s, s.get_allocator())
+    {
+    }
+
+    multi_index_container(multi_index_container && s) noexcept(std::is_nothrow_move_constructible<allocator_type>::value &&
+                          std::is_nothrow_move_constructible<typename inherited_index::key_compare>::value) requires(num_indices == 1)
+        : inherited_index(inherited_construction_key{}, *this, std::move(s))
+        , m_index_instances(*this)
+        , m_size{s.m_size}
+        , m_alloc(std::move(s.m_alloc))
+    {
+    }
+
+    explicit multi_index_container(const allocator_type& a) requires(num_indices == 1)
+        : inherited_index(*this, inherited_construction_key{})
+        , m_index_instances(*this)
+        , m_alloc(std::allocator_traits<Allocator>::select_on_container_copy_construction(a.m_alloc))
+    {
+    }
+
+    multi_index_container(const multi_index_container & s, const allocator_type& a) requires(num_indices == 1)
+        : inherited_index(inherited_construction_key{}, *this, s)
+        , m_index_instances(*this)
+        , m_alloc(a)
+    {
+        inherited_index::insert(s.begin(), s.end());
+    }
+
+    multi_index_container(multi_index_container && s, const allocator_type& a) requires(num_indices == 1)
+        : inherited_index(inherited_construction_key{}, *this, std::move(s))
+        , m_index_instances(*this)
+        , m_alloc(std::move(a))
+    {
+    }
+
+    template <detail::HasValueCompare U = inherited_index>
+    multi_index_container(std::initializer_list<value_type> il, const typename U::value_compare& comp = typename U::value_compare()) requires(num_indices == 1) : multi_index_container(comp)
+    {
+        inherited_index::insert(il.begin(), il.end());
+    }
+
+    template <detail::HasValueCompare U = inherited_index>
+    multi_index_container(std::initializer_list<value_type> il, const typename U::value_compare& comp, const allocator_type& a) requires(num_indices == 1) : multi_index_container(comp, a)
+    {
+        inherited_index::insert(il.begin(), il.end());
+    }
+
+
+
+
+
+    multi_index_container(const allocator_type& alloc = {}) requires(num_indices != 1)
+          : inherited_index(*this),
           m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this)),
           m_alloc(alloc)
+
     {
     }
 
@@ -674,7 +767,44 @@ public:
         return !size();
     }
 
+    void swap(multi_index_container & s) noexcept(std::allocator_traits<Allocator>::is_always_equal::value)
+    {
+        if constexpr(std::allocator_traits<allocator_type>::propagate_on_container_swap::value)
+        {
+            using std::swap;
+            swap(m_alloc, s.m_alloc);
+        }
+        std::swap(m_begin, s.m_begin);
+        std::swap(m_end, s.m_end);
+        std::swap(m_size, s.m_size);
+
+        foreach_index([]<int I>(nth_index_t<I>& lhs, nth_index_t<I>& rhs) TMI_CPP23_STATIC {
+            lhs.swap(rhs);
+        }, nullptr, m_index_instances, s.m_index_instances);
+    }
 };
+
+template <typename T, typename Indices, typename Allocator>
+void swap(multi_index_container<T, Indices, Allocator>& x, multi_index_container<T, Indices, Allocator>& y) noexcept(noexcept(x.swap(y)))
+{
+    x.swap(y);
+}
+
+template <typename T, typename Indices, typename Allocator, typename Predicate>
+typename multi_index_container<T, Indices, Allocator>::size_type erase_if(multi_index_container<T, Indices, Allocator>& c, Predicate pred)
+{
+    return erase_if(c.template get<0>(), std::move(pred));
+}
+
+template <typename T, typename Indices, typename Allocator, typename Predicate>
+inline bool operator==(const multi_index_container<T, Indices, Allocator>& x, const multi_index_container<T, Indices, Allocator>& y) {
+    return x.template get<0>() == y.template get<0>();
+}
+
+template <typename T, typename Indices, typename Allocator, typename Predicate>
+inline bool operator<=>(const multi_index_container<T, Indices, Allocator>& x, const multi_index_container<T, Indices, Allocator>& y) {
+    return x.template get<0>() <=> y.template get<0>();
+}
 
 } // namespace tmi
 

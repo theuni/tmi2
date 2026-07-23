@@ -30,7 +30,8 @@ struct tmi_hasher_helper
     using value_type = typename node_type::value_type;
     using hasher = typename Hasher::hasher_type;
     using key_equal = typename Hasher::pred_type;
-    using tree_type = hash_tree<node_type, value_type, key_from_value, hasher, key_equal, Allocator, Hasher::is_unique()>;
+    using bucket_list_type = tmi::bucket_list<node_type, Allocator>;
+    using tree_type = hash_tree<node_type, value_type, key_from_value, hasher, key_equal, Allocator, bucket_list_type, Hasher::is_unique()>;
 };
 } // namespace detail
 
@@ -57,7 +58,6 @@ public:
     using insert_return_type = detail::insert_return_type<iterator, node_handle>;
     using value_type = node_type::value_type;
     friend Parent;
-    using buckets_type = std::vector<node_type*, bucket_allocator_type>;
 private:
 
     using insert_hints = tree_type::insert_hints;
@@ -66,18 +66,18 @@ private:
 
     Parent& m_parent;
     float m_max_load_factor{0.8f};
-    buckets_type m_buckets{};
 
-    tmi_hasher(Parent& parent) : m_parent(parent) {}
+    tmi_hasher(Parent& parent) : tree_type(get_allocator()), m_parent(parent) {}
 public:
-    tmi_hasher(ConstructionKey, Parent& parent, const key_from_value& kv, const hasher& h, const key_equal& ke) : tree_type(kv, h, ke), m_parent(parent) {}
-    tmi_hasher(ConstructionKey, Parent& parent, size_type bucket_count, const key_from_value& kv, const hasher& h, const key_equal& ke) : tree_type(kv, h, ke), m_parent(parent)
+    tmi_hasher(ConstructionKey, Parent& parent) : tree_type(get_allocator(), key_from_value{}, hasher{}, key_equal{}), m_parent(parent) {}
+    tmi_hasher(ConstructionKey, Parent& parent, const key_from_value& kv, const hasher& h, const key_equal& ke) : tree_type(get_allocator(), kv, h, ke), m_parent(parent) {}
+    tmi_hasher(ConstructionKey, Parent& parent, size_type bucket_count, const key_from_value& kv, const hasher& h, const key_equal& ke) : tree_type(get_allocator(), kv, h, ke), m_parent(parent)
     {
         rehash_impl(bucket_count);
     }
 private:
 
-    tmi_hasher(Parent& parent, const tmi_hasher& rhs) : tree_type(rhs), m_parent(parent){}
+    tmi_hasher(Parent& parent, const tmi_hasher& rhs) : tree_type(get_allocator()), m_parent(parent){}
     tmi_hasher(Parent& parent, tmi_hasher&& rhs) : tree_type(std::move(rhs)), m_parent(parent)
     {
     }
@@ -95,14 +95,20 @@ private:
 
     node_type* tmi_preinsert_node(const value_type& value, insert_hints& hints)
     {
-        size_t buckets = tree_type::bucket_count();
 
-        if (!buckets) {
-            rehash_impl(1);
-        } else if (size() + 1 > static_cast<size_type>(static_cast<float>(buckets) * max_load_factor())) {
-            rehash_impl(buckets * 2);
+        node_type* ret = nullptr;
+        size_t buckets = tree_type::bucket_count();
+        if (buckets) {
+            ret = tree_type::preinsert_node(value, hints);
+            if (ret) {
+                return ret;
+            }
         }
-        return tree_type::preinsert_node(value, hints);
+        if (size() + 1 >= static_cast<size_type>(std::ceil(static_cast<float>(buckets) * max_load_factor()))) {
+            rehash_impl(buckets + 1);
+            tree_type::preinsert_node(value, hints);
+        }
+        return nullptr;
     }
 
     void tmi_create_premodify_cache(const node_type* node, premodify_cache& cache) const
@@ -127,9 +133,7 @@ private:
 
     void rehash_impl(size_t new_bucket_count)
     {
-        buckets_type new_buckets(new_bucket_count, nullptr);
-        tree_type::rehash(new_buckets);
-        m_buckets = std::move(new_buckets);
+        tree_type::rehash(new_bucket_count);
     }
 
 public:

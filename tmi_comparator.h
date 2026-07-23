@@ -7,6 +7,7 @@
 
 #include "tmi_nodehandle.h"
 #include "tmi_index.h"
+#include "tmi_compare.h"
 #include "wavl_tree.h"
 
 #include <cassert>
@@ -64,6 +65,9 @@ public:
     tmi_comparator(ConstructionKey, Parent& parent, const key_from_value& kv, const key_compare& kc) : tree_type{kv, kc}, m_parent(parent){}
     tmi_comparator(ConstructionKey, Parent& parent, const key_from_value& kv) : tree_type{kv, key_compare{}}, m_parent(parent){}
     tmi_comparator(ConstructionKey, Parent& parent, const key_compare& kc) : tree_type{key_from_value{}, kc}, m_parent(parent){}
+    tmi_comparator(ConstructionKey, Parent& parent) : tree_type{key_from_value{}, key_compare{}}, m_parent(parent){}
+    tmi_comparator(ConstructionKey, Parent& parent, const tmi_comparator& rhs) : tree_type{rhs}, m_parent(parent){}
+    tmi_comparator(ConstructionKey, Parent& parent, tmi_comparator&& rhs) : tree_type{std::move(rhs)}, m_parent(parent){}
 private:
     tmi_comparator(Parent& parent) : m_parent(parent){}
 
@@ -485,6 +489,30 @@ public:
     }
 
 };
+
+template <typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator, typename Predicate>
+typename tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>::size_type erase_if(tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& c, Predicate pred)
+{
+    auto old_size = c.size();
+    for (auto first = c.begin(), last = c.end(); first != last;)
+    {
+        if (pred(*first))
+            first = c.erase(first);
+        else
+            ++first;
+    }
+    return old_size - c.size();
+}
+
+template <typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator, typename Predicate>
+inline bool operator==(const tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& x, const tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& y) {
+    return x.size() == y.size() && std::equal(x.begin(), x.end(), y.begin());
+}
+
+template <typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator, typename Predicate>
+detail::synth_three_way_result<typename IndexedNode::value_type> operator<=>(const tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& x, const tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& y) {
+    return std::lexicographical_compare_three_way(x.begin(), x.end(), y.begin(), y.end(), detail::synth_three_way);
+}
 
 } // namespace tmi
 
