@@ -448,6 +448,15 @@ public:
 
         bool needs_resort = ((next_ptr != nullptr && m_comparator(m_key_from_value(next_ptr->value()), key)) ||
                              (prev_ptr != nullptr && m_comparator(key, m_key_from_value(prev_ptr->value()))));
+        if constexpr (unique_keys()) {
+            needs_resort = needs_resort ||
+                (next_ptr != nullptr &&
+                 !m_comparator(key, m_key_from_value(next_ptr->value())) &&
+                 !m_comparator(m_key_from_value(next_ptr->value()), key)) ||
+                (prev_ptr != nullptr &&
+                 !m_comparator(key, m_key_from_value(prev_ptr->value())) &&
+                 !m_comparator(m_key_from_value(prev_ptr->value()), key));
+        }
         if (needs_resort) {
 
             remove_node(node);

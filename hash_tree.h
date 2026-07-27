@@ -186,12 +186,29 @@ public:
 
     bool erase_if_modified(node_type* node, const premodify_cache& cache)
     {
-        if (m_hasher(m_key_from_value(node->value())) != node->hash()) {
+        const auto& key = m_key_from_value(node->value());
+        const size_t hash = m_hasher(key);
+        bool needs_rehash = hash != node->hash();
+        if constexpr (unique_keys()) {
+            if (!needs_rehash && !m_buckets.empty()) {
+                const size_t index = hash_to_bucket(hash, m_buckets.size());
+                const node_type* other = m_buckets[index];
+                while (other) {
+                    if (other != node && other->hash() == hash && m_pred(m_key_from_value(other->value()), key)) {
+                        needs_rehash = true;
+                        break;
+                    }
+                    other = other->next_hash();
+                }
+            }
+        }
+        if (needs_rehash) {
             if (cache.m_prev) {
                 const_cast<node_type*>(cache.m_prev)->set_next_hashptr(node->next_hash());
             } else {
                 m_buckets[cache.m_index] = node->next_hash();
             }
+            node->set_next_hashptr(nullptr);
             return true;
         }
         return false;
