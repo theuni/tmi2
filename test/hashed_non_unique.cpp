@@ -22,6 +22,7 @@ class CompileTest
     void test_empty();
     void test_size();
     void test_count();
+    void test_modify();
     void test_clear();
 
     tmi::multi_index_container<T,tmi::indexed_by<tmi::hashed_non_unique<tmi::identity<T>>>> tmi_unordered_multiset;
@@ -44,6 +45,7 @@ CompileTest<T>::CompileTest()
     test_empty();
     test_size();
     test_count();
+    test_modify();
     test_clear();
 
 }
@@ -146,6 +148,23 @@ template <typename T>
 void CompileTest<T>::test_count()
 {
         assert(std_unordered_multiset.count(T{}) == tmi_unordered_multiset_view.count(T{}));
+}
+
+template <typename T>
+void CompileTest<T>::test_modify()
+{
+        tmi::multi_index_container<T,tmi::indexed_by<tmi::hashed_non_unique<tmi::identity<T>>>> container;
+        auto& view = container.template get<0>();
+        const T old_value{};
+        const T new_value{1};
+        view.insert(old_value);
+
+        auto it = view.find(old_value);
+        assert(it != view.end());
+        assert(view.modify(it, [](T& value) { value = T{1}; }));
+        assert(view.size() == 1);
+        assert(view.find(old_value) == view.end());
+        assert(view.find(new_value) != view.end());
 }
 
 template <typename T>
