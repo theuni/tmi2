@@ -32,6 +32,7 @@ class CompileTest
     void test_empty();
     void test_size();
     void test_count();
+    void test_clear();
 
     std::set<T> std_set;
     tmi::multi_index_container<T,tmi::indexed_by<tmi::ordered_unique<tmi::identity<T>>>> tmi_set;
@@ -52,6 +53,7 @@ CompileTest<T>::CompileTest()
     test_empty();
     test_size();
     test_count();
+    test_clear();
 }
 
 template <typename T>
@@ -150,6 +152,16 @@ template <typename T>
 void CompileTest<T>::test_count()
 {
         assert(std_set.count(T{}) == tmi_set_view.count(T{}));
+}
+
+template <typename T>
+void CompileTest<T>::test_clear()
+{
+        std_set.clear();
+        tmi_set_view.clear();
+        assert(std_set.size() == tmi_set_view.size());
+        assert(std_set.empty() == tmi_set_view.empty());
+        assert(tmi_set_view.begin() == tmi_set_view.end());
 }
 
 } // anonymous namespace

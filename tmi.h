@@ -451,6 +451,7 @@ private:
             do_destroy_node(to_delete);
         }
         m_begin = m_end = nullptr;
+        m_size = 0;
     }
 
     template <typename IndexedNode>

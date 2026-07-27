@@ -33,6 +33,7 @@ class CompileTest
     void test_empty();
     void test_size();
     void test_count();
+    void test_clear();
 
     std::multiset<T> std_multiset;
     tmi::multi_index_container<T,tmi::indexed_by<tmi::ordered_non_unique<tmi::identity<T>>>> tmi_multiset;
@@ -53,6 +54,7 @@ CompileTest<T>::CompileTest()
     test_empty();
     test_size();
     test_count();
+    test_clear();
 }
 
 template <typename T>
@@ -152,6 +154,16 @@ template <typename T>
 void CompileTest<T>::test_count()
 {
         assert(std_multiset.count(T{}) == tmi_multiset_view.count(T{}));
+}
+
+template <typename T>
+void CompileTest<T>::test_clear()
+{
+        std_multiset.clear();
+        tmi_multiset_view.clear();
+        assert(std_multiset.size() == tmi_multiset_view.size());
+        assert(std_multiset.empty() == tmi_multiset_view.empty());
+        assert(tmi_multiset_view.begin() == tmi_multiset_view.end());
 }
 
 } // anonymous namespace

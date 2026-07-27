@@ -22,6 +22,7 @@ class CompileTest
     void test_empty();
     void test_size();
     void test_count();
+    void test_clear();
 
     tmi::multi_index_container<T,tmi::indexed_by<tmi::hashed_unique<tmi::identity<T>>>> tmi_unordered_set;
     typename decltype(tmi_unordered_set)::template nth_index_t<0>& tmi_unordered_set_view{tmi_unordered_set.template get<0>()};
@@ -43,6 +44,7 @@ CompileTest<T>::CompileTest()
     test_empty();
     test_size();
     test_count();
+    test_clear();
 
 }
 
@@ -144,6 +146,16 @@ template <typename T>
 void CompileTest<T>::test_count()
 {
         assert(std_unordered_set.count(T{}) == tmi_unordered_set_view.count(T{}));
+}
+
+template <typename T>
+void CompileTest<T>::test_clear()
+{
+        std_unordered_set.clear();
+        tmi_unordered_set_view.clear();
+        assert(std_unordered_set.size() == tmi_unordered_set_view.size());
+        assert(std_unordered_set.empty() == tmi_unordered_set_view.empty());
+        assert(tmi_unordered_set_view.begin() == tmi_unordered_set_view.end());
 }
 
 } // anonymous namespace
