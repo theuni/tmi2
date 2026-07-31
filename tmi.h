@@ -419,7 +419,7 @@ private:
         indices_hints_tuple index_hints;
 
         bool insertable = get_foreach_index([]<int I>(const indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, const auto& modify, auto& indexed_hints) TMI_CPP23_STATIC {
-            if (modify) return instance.tmi_preinsert_node(indexed_node, indexed_hints) == nullptr;
+            if (modify) return instance.tmi_preinsert_node(indexed_node->value(), indexed_hints) == nullptr;
             return true;
         }, node, m_index_instances,  indicies_to_modify, index_hints);
 
@@ -451,6 +451,7 @@ private:
             do_destroy_node(to_delete);
         }
         m_begin = m_end = nullptr;
+        m_size = 0;
     }
 
     template <typename IndexedNode>

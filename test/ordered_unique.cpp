@@ -21,6 +21,23 @@ struct my_class
 struct comp_less;
 
 template <typename T>
+T modified_value();
+
+template <>
+int modified_value<int>()
+{
+    return 1;
+}
+
+template <>
+my_class modified_value<my_class>()
+{
+    my_class ret;
+    ret.m_val = 1;
+    return ret;
+}
+
+template <typename T>
 class CompileTest
 {
     void test_insert();
@@ -32,6 +49,8 @@ class CompileTest
     void test_empty();
     void test_size();
     void test_count();
+    void test_modify();
+    void test_clear();
 
     std::set<T> std_set;
     tmi::multi_index_container<T,tmi::indexed_by<tmi::ordered_unique<tmi::identity<T>>>> tmi_set;
@@ -52,6 +71,8 @@ CompileTest<T>::CompileTest()
     test_empty();
     test_size();
     test_count();
+    test_modify();
+    test_clear();
 }
 
 template <typename T>
@@ -150,6 +171,33 @@ template <typename T>
 void CompileTest<T>::test_count()
 {
         assert(std_set.count(T{}) == tmi_set_view.count(T{}));
+}
+
+template <typename T>
+void CompileTest<T>::test_modify()
+{
+        tmi::multi_index_container<T,tmi::indexed_by<tmi::ordered_unique<tmi::identity<T>>>> container;
+        auto& view = container.template get<0>();
+        const T old_value{};
+        const T new_value{modified_value<T>()};
+        view.insert(old_value);
+
+        auto it = view.find(old_value);
+        assert(it != view.end());
+        assert(view.modify(it, [&new_value](T& value) { value = new_value; }));
+        assert(view.size() == 1);
+        assert(view.find(old_value) == view.end());
+        assert(view.find(new_value) != view.end());
+}
+
+template <typename T>
+void CompileTest<T>::test_clear()
+{
+        std_set.clear();
+        tmi_set_view.clear();
+        assert(std_set.size() == tmi_set_view.size());
+        assert(std_set.empty() == tmi_set_view.empty());
+        assert(tmi_set_view.begin() == tmi_set_view.end());
 }
 
 } // anonymous namespace
