@@ -51,6 +51,7 @@ class CompileTest
     void test_count();
     void test_modify();
     void test_clear();
+    void test_modify_conflict();
 
     std::set<T> std_set;
     tmi::multi_index_container<T,tmi::indexed_by<tmi::ordered_unique<tmi::identity<T>>>> tmi_set;
@@ -73,6 +74,7 @@ CompileTest<T>::CompileTest()
     test_count();
     test_modify();
     test_clear();
+    test_modify_conflict();
 }
 
 template <typename T>
@@ -180,6 +182,7 @@ void CompileTest<T>::test_modify()
         auto& view = container.template get<0>();
         const T old_value{};
         const T new_value{modified_value<T>()};
+
         view.insert(old_value);
 
         auto it = view.find(old_value);
@@ -198,6 +201,24 @@ void CompileTest<T>::test_clear()
         assert(std_set.size() == tmi_set_view.size());
         assert(std_set.empty() == tmi_set_view.empty());
         assert(tmi_set_view.begin() == tmi_set_view.end());
+}
+
+template <typename T>
+void CompileTest<T>::test_modify_conflict()
+{
+        tmi::multi_index_container<T,tmi::indexed_by<tmi::ordered_unique<tmi::identity<T>>>> container;
+        auto& view = container.template get<0>();
+        const T existing_value{};
+        const T old_value{modified_value<T>()};
+        view.insert(existing_value);
+        view.insert(old_value);
+
+        auto it = view.find(old_value);
+        assert(it != view.end());
+        assert(!view.modify(it, [](T& value) { value = T{}; }));
+        assert(view.size() == 1);
+        assert(view.count(existing_value) == 1);
+        assert(view.find(old_value) == view.end());
 }
 
 } // anonymous namespace

@@ -10,6 +10,14 @@
 
 namespace {
 
+struct constant_hash
+{
+    size_t operator()(int) const
+    {
+        return 0;
+    }
+};
+
 template <typename T>
 class CompileTest
 {
@@ -24,6 +32,7 @@ class CompileTest
     void test_count();
     void test_modify();
     void test_clear();
+    void test_modify_conflict();
 
     tmi::multi_index_container<T,tmi::indexed_by<tmi::hashed_unique<tmi::identity<T>>>> tmi_unordered_set;
     typename decltype(tmi_unordered_set)::template nth_index_t<0>& tmi_unordered_set_view{tmi_unordered_set.template get<0>()};
@@ -47,6 +56,7 @@ CompileTest<T>::CompileTest()
     test_count();
     test_modify();
     test_clear();
+    test_modify_conflict();
 
 }
 
@@ -157,6 +167,7 @@ void CompileTest<T>::test_modify()
         auto& view = container.template get<0>();
         const T old_value{};
         const T new_value{1};
+
         view.insert(old_value);
 
         auto it = view.find(old_value);
@@ -175,6 +186,24 @@ void CompileTest<T>::test_clear()
         assert(std_unordered_set.size() == tmi_unordered_set_view.size());
         assert(std_unordered_set.empty() == tmi_unordered_set_view.empty());
         assert(tmi_unordered_set_view.begin() == tmi_unordered_set_view.end());
+}
+
+template <typename T>
+void CompileTest<T>::test_modify_conflict()
+{
+        tmi::multi_index_container<T,tmi::indexed_by<tmi::hashed_unique<tmi::identity<T>, constant_hash>>> container;
+        auto& view = container.template get<0>();
+        const T existing_value{};
+        const T old_value{1};
+        view.insert(existing_value);
+        view.insert(old_value);
+
+        auto it = view.find(old_value);
+        assert(it != view.end());
+        assert(!view.modify(it, [](T& value) { value = T{}; }));
+        assert(view.size() == 1);
+        assert(view.count(existing_value) == 1);
+        assert(view.find(old_value) == view.end());
 }
 
 } // anonymous namespace
