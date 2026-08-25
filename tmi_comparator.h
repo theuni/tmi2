@@ -18,10 +18,10 @@
 
 namespace tmi {
 
-template <typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator>
-class tmi_comparator : private wavl_tree<IndexedNode, typename IndexedNode::value_type, KeyFromValue, Comparator, Allocator, Unique>
+template <typename T, typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator>
+class tmi_comparator : private wavl_tree<IndexedNode, T, KeyFromValue, Comparator, Allocator, Unique>
 {
-    using tree_type = wavl_tree<IndexedNode, typename IndexedNode::value_type, KeyFromValue, Comparator, Allocator, Unique>;
+    using tree_type = wavl_tree<IndexedNode, T, KeyFromValue, Comparator, Allocator, Unique>;
     using tree_type::unique_keys;
 
     struct ConstructionKey { constexpr ConstructionKey() noexcept = default; };
@@ -49,8 +49,13 @@ public:
     using const_reverse_iterator = tree_type::const_reverse_iterator;
     using insert_return_type = std::conditional_t<!unique_keys() && IsOnlyIndex, iterator, tmi::detail::insert_return_type<iterator, node_type>>;
 
+    static_assert(std::is_same<typename allocator_type::value_type, value_type>::value);
+
 private:
     friend Parent;
+
+    template <typename, typename, typename>
+    friend class multi_index_container;
 
     using insert_hints = tree_type::insert_hints;
     using premodify_cache = tree_type::premodify_cache;
@@ -62,23 +67,61 @@ private:
 
     Parent& m_parent;
 public:
-    tmi_comparator(ConstructionKey, Parent& parent, const key_from_value& kv, const key_compare& kc) : tree_type{kv, kc}, m_parent(parent){}
-    tmi_comparator(ConstructionKey, Parent& parent, const key_from_value& kv) : tree_type{kv, key_compare{}}, m_parent(parent){}
-    tmi_comparator(ConstructionKey, Parent& parent, const key_compare& kc) : tree_type{key_from_value{}, kc}, m_parent(parent){}
-    tmi_comparator(ConstructionKey, Parent& parent) : tree_type{key_from_value{}, key_compare{}}, m_parent(parent){}
-    tmi_comparator(ConstructionKey, Parent& parent, const tmi_comparator& rhs) : tree_type{rhs}, m_parent(parent){}
-    tmi_comparator(ConstructionKey, Parent& parent, tmi_comparator&& rhs) : tree_type{std::move(rhs)}, m_parent(parent){}
-private:
+    tmi_comparator(ConstructionKey, Parent& parent, allocator_type&, const key_from_value& kv, const key_compare& kc) : tree_type{kv, kc}, m_parent(parent){}
+    tmi_comparator(ConstructionKey, Parent& parent, allocator_type&, const key_from_value& kv) : tree_type{kv, key_compare{}}, m_parent(parent){}
+    tmi_comparator(ConstructionKey, Parent& parent, allocator_type&, const key_compare& kc) : tree_type{key_from_value{}, kc}, m_parent(parent){}
+    tmi_comparator(ConstructionKey, Parent& parent, allocator_type&) : tree_type{key_from_value{}, key_compare{}}, m_parent(parent){}
+    tmi_comparator(ConstructionKey, Parent& parent, allocator_type&, const tmi_comparator& rhs) : tree_type{rhs.key_extractor(), rhs.key_comp()}, m_parent(parent){}
+    tmi_comparator(ConstructionKey, Parent& parent, tmi_comparator&& rhs) : tree_type{std::move(rhs)}, m_parent(parent)
+    {
+        rhs.release();
+    }
     tmi_comparator(Parent& parent) : m_parent(parent){}
 
-    tmi_comparator(Parent& parent, const tmi_comparator& rhs) : tree_type{rhs}, m_parent(parent){}
-    tmi_comparator(Parent& parent, tmi_comparator&& rhs) : tree_type{std::move(rhs)}, m_parent(parent){}
-
-    tmi_comparator(const tree_type&) = delete;
+    tmi_comparator(const tree_type& s) = delete;
     tmi_comparator(tree_type&&) = delete;
-    tmi_comparator& operator=(const tree_type&) = delete;
-    tmi_comparator& operator=(tree_type&&) = delete;
 
+    tmi_comparator(tmi_comparator&& s) : tree_type{std::move(s)}, m_parent{s.m_parent} {}
+    tmi_comparator& operator=(const tmi_comparator& s)
+    {
+        if (this == std::addressof(s))
+            return *this;
+        tree_type::operator=(tree_type{s.key_extractor(), s.key_comp()});
+
+        return *this;
+    }
+
+    tmi_comparator& operator=(tmi_comparator&& s) noexcept(std::allocator_traits<Allocator>::is_always_equal::value
+                                        && std::is_nothrow_move_assignable_v<allocator_type> && std::is_nothrow_move_assignable_v<tree_type>)
+    {
+        if (this == std::addressof(s))
+            return *this;
+
+        tree_type::operator=(std::move(s));
+        s.release(); 
+
+        return *this;
+    }
+/*
+    void assign(tmi_comparator&& s)
+    {
+        tree_type::operator=(std::move(s));
+        s.release();
+    }
+*/
+    void assign_release(tmi_comparator&& s)
+    {
+        tree_type::operator=(std::move(s));
+        s.release(); 
+        tree_type::release();
+    }
+private:
+/*
+    insert_hints_type tmi_set_hint(const data_type* hint)
+    {
+        return tree_type::set_hint(hint);
+    }
+*/
     void tmi_remove_node(data_type* node)
     {
         iterator it = tree_type::make_iterator(node);
@@ -90,9 +133,14 @@ private:
         tree_type::insert_node_direct(node);
     }
 
+    data_type* tmi_preinsert_node_hint(const data_type* supplied_hint, const value_type& value, insert_hints& hints)
+    {
+        return tree_type::preinsert_node_hint(supplied_hint, value, hints);
+    }
+
     data_type* tmi_preinsert_node(const value_type& value, insert_hints& hints)
     {
-        return tree_type::preinsert_node(nullptr, value, hints);
+        return tree_type::preinsert_node(value, hints);
     }
 
     void tmi_insert_node(data_type* node, const insert_hints& hints)
@@ -132,7 +180,7 @@ private:
     {
         m_parent.do_unlink(node);
     }
-
+/*
     template<class S2>
     void merge_impl(S2&& source)
     {
@@ -145,7 +193,7 @@ private:
             }
         }
     }
-
+*/
     template <class... Args>
     std::pair<data_type*,bool> emplace_impl(const data_type* node_hint, Args&&... args)
     {
@@ -171,6 +219,16 @@ private:
         return {node, true};
     }
 
+    const data_type* node_from_iterator(const_iterator it) const
+    {
+        return tree_type::node_from_iterator(it);
+    }
+
+    data_type* node_from_iterator(iterator it)
+    {
+        return tree_type::node_from_iterator(it);
+    }
+
 public:
 
     insert_result_type insert(const value_type& v)
@@ -188,22 +246,22 @@ public:
     iterator insert(const_iterator position, const value_type& v)
     {
         const data_type* node_hint = tree_type::node_from_iterator(position);
-        auto result = m_parent.template do_insert_hint<data_type>(node_hint, v);
-        return make_insert_result(std::move(result));
+        const auto& [node, success] = m_parent.template do_insert_hint<data_type>(node_hint, v);
+        return make_iterator(node);
     }
 
     iterator insert(const_iterator position, value_type&& v)
     {
         const data_type* node_hint = tree_type::node_from_iterator(position);
-        auto result = m_parent.template do_insert_hint<data_type>(node_hint, std::move(v));
-        return make_insert_result(std::move(result));
+        const auto& [node, success] = m_parent.template do_insert_hint<data_type>(node_hint, std::move(v));
+        return make_iterator(node);
     }
 
     template <class InputIterator>
     void insert(InputIterator first, InputIterator last)
     {
         for(auto it = first; it != last; ++it) {
-            insert(*it);
+            m_parent.template do_emplace<data_type>(*it);
         }
     }
 
@@ -223,8 +281,8 @@ public:
     iterator emplace_hint(const_iterator position, Args&&... args)
     {
         const data_type* node_hint = tree_type::node_from_iterator(position);
-        auto result = m_parent.template do_emplace_hint<data_type>(node_hint, std::forward<Args>(args)...);
-        return make_insert_result(std::move(result));
+        const auto& [node, inserted] = m_parent.template do_emplace_hint<data_type>(node_hint, std::forward<Args>(args)...);
+        return make_iterator(node);
     }
 
     node_type extract(const_iterator position)
@@ -285,7 +343,7 @@ public:
 
     size_type max_size() const noexcept
     {
-        return m_parent.max_size();
+        return std::min<size_type>(std::allocator_traits<allocator_type>::max_size(get_allocator()), std::numeric_limits<difference_type >::max());
     }
 
     iterator erase(const_iterator it)
@@ -433,30 +491,35 @@ public:
         return tree_type::equal_range(x);
     }
 
-    template<class C2>
-    void merge(tmi_comparator<IndexedNode, Unique, IsOnlyIndex, C2, KeyFromValue, Parent, Allocator>& source)
+    template<class IndexedNode2, class Parent2, class C2>
+    void merge(tmi_comparator<T, IndexedNode2, Unique, IsOnlyIndex, C2, KeyFromValue, Parent2, Allocator>& source)
     {
-        merge_impl(source);
+        m_parent.template do_merge_index<data_type>(source);
     }
 
-    template<class C2>
-    void merge(tmi_comparator<IndexedNode, Unique, IsOnlyIndex, C2, KeyFromValue, Parent, Allocator>&& source)
+    template<class IndexedNode2, class Parent2, class C2>
+    void merge(tmi_comparator<T, IndexedNode2, Unique, IsOnlyIndex, C2, KeyFromValue, Parent2, Allocator>&& source)
     {
-        merge_impl(std::move(source));
+        m_parent.template do_merge_index<data_type>(source);
     }
 
-    template<class C2>
-    void merge(tmi_comparator<IndexedNode, !Unique, IsOnlyIndex, C2, KeyFromValue, Parent, Allocator>& source)
+    template<class IndexedNode2, class Parent2, class C2>
+    void merge(tmi_comparator<T, IndexedNode2, !Unique, IsOnlyIndex, C2, KeyFromValue, Parent2, Allocator>& source)
     {
-        merge_impl(source);
+        m_parent.template do_merge_index<data_type>(source);
     }
 
-    template<class C2>
-    void merge(tmi_comparator<IndexedNode, !Unique, IsOnlyIndex, C2, KeyFromValue, Parent, Allocator>&& source)
+    template<class IndexedNode2, class Parent2, class C2>
+    void merge(tmi_comparator<T, IndexedNode2, !Unique, IsOnlyIndex, C2, KeyFromValue, Parent2, Allocator>&& source)
     {
-        merge_impl(std::move(source));
+        m_parent.template do_merge_index<data_type>(source);
     }
 
+    void swap(tmi_comparator& s) noexcept(std::allocator_traits<Allocator>::is_always_equal::value &&
+                               std::is_nothrow_swappable_v<tree_type>)
+    {
+        tree_type::swap(s);
+    }
 
     [[nodiscard]] allocator_type get_allocator() const noexcept
     {
@@ -490,8 +553,8 @@ public:
 
 };
 
-template <typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator, typename Predicate>
-typename tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>::size_type erase_if(tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& c, Predicate pred)
+template <typename T, typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator, typename Predicate>
+typename tmi::tmi_comparator<T, IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>::size_type erase_if(tmi::tmi_comparator<T, IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& c, Predicate pred)
 {
     auto old_size = c.size();
     for (auto first = c.begin(), last = c.end(); first != last;)
@@ -504,14 +567,20 @@ typename tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFr
     return old_size - c.size();
 }
 
-template <typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator, typename Predicate>
-inline bool operator==(const tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& x, const tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& y) {
+template <typename T, typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator>
+inline bool operator==(const tmi::tmi_comparator<T, IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& x, const tmi::tmi_comparator<T, IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& y) {
     return x.size() == y.size() && std::equal(x.begin(), x.end(), y.begin());
 }
 
-template <typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator, typename Predicate>
-detail::synth_three_way_result<typename IndexedNode::value_type> operator<=>(const tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& x, const tmi::tmi_comparator<IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& y) {
+template <typename T, typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator>
+detail::synth_three_way_result<typename IndexedNode::value_type> operator<=>(const tmi::tmi_comparator<T, IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& x, const tmi::tmi_comparator<T, IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& y) {
     return std::lexicographical_compare_three_way(x.begin(), x.end(), y.begin(), y.end(), detail::synth_three_way);
+}
+
+template <typename T, typename IndexedNode, bool Unique, bool IsOnlyIndex, typename Comparator, typename KeyFromValue, typename Parent, typename Allocator>
+void swap(tmi::tmi_comparator<T, IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& x, tmi::tmi_comparator<T, IndexedNode, Unique, IsOnlyIndex, Comparator, KeyFromValue, Parent, Allocator>& y) noexcept(noexcept(x.swap(y)))
+{
+    x.swap(y);
 }
 
 } // namespace tmi

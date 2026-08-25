@@ -2,7 +2,8 @@
 #define TMI_STD_SET_H
 
 #if 1
-#include <tmiset.h>
+//#include <tmiset.h>
+#include <tmi.h>
 namespace std
 {
     using namespace tmi;

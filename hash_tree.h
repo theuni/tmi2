@@ -5,8 +5,6 @@
 #ifndef HASH_TREE_H_
 #define HASH_TREE_H_
 
-#include <bucket_list.h>
-
 #include <algorithm>
 #include <bit>
 #include <cassert>
@@ -18,7 +16,6 @@
 #include <tuple>
 #include <utility>
 #include <span>
-#include <vector>
 
 namespace tmi {
 
@@ -43,9 +40,7 @@ public:
     using bucket_list_type = BucketList;
 
 private:
-    using hash_buckets = bucket_list_type;
-    using bucket_allocator_type = typename std::allocator_traits<allocator_type>::template rebind_alloc<Node*>;
-    bucket_allocator_type m_alloc;
+    using hash_buckets = std::span<node_type*>;
     hash_buckets m_buckets;
     node_type* m_begin{nullptr};
 
@@ -76,53 +71,41 @@ public:
     }
 
 
-    hash_tree() noexcept : m_alloc{allocator_type{}}, m_buckets{m_alloc} {}
-    hash_tree(const allocator_type& alloc) : m_alloc{alloc}, m_buckets{m_alloc} {}
-    hash_tree(const hasher_type& hasher, const allocator_type& alloc) : m_alloc{alloc}, m_buckets{m_alloc}, m_hasher(hasher) {}
+    hash_tree() noexcept {}
 
-    hash_tree(const allocator_type& alloc, key_from_value_type key_from_value ,hasher_type hasher, key_equal_type key_equal) : m_alloc{alloc}, m_buckets{m_alloc}, m_key_from_value(key_from_value), m_hasher(hasher), m_pred(key_equal){}
+    hash_tree(key_from_value_type key_from_value ,hasher_type hasher, key_equal_type key_equal) : m_key_from_value(key_from_value), m_hasher(hasher), m_pred(key_equal){}
+    hash_tree(hash_buckets buckets, key_from_value_type key_from_value = key_from_value_type{}, hasher_type hasher = hasher_type{}, key_equal_type key_equal = key_equal_type{}) : m_buckets{buckets}, m_key_from_value(key_from_value), m_hasher(hasher), m_pred(key_equal){}
+
+    hash_tree(const hash_tree& rhs, hash_buckets buckets) : m_buckets{buckets}, m_key_from_value{rhs.m_key_from_value}, m_hasher{rhs.m_hasher}, m_pred{rhs.m_pred}
+    {
+    }
+
+    hash_tree(hash_tree&& rhs, hash_buckets buckets) : m_buckets{buckets}, m_key_from_value{std::move(rhs.m_key_from_value)}, m_hasher{std::move(rhs.m_hasher)}, m_pred{std::move(rhs.m_pred)}
+    {
+        rhs.m_begin = nullptr;
+        rhs.m_buckets = {};
+    }
 
     hash_tree(const hash_tree& rhs) = delete;
-    hash_tree& operator=(const hash_tree& rhs)
-    {
-        clear();
-        m_key_from_value = rhs.m_key_from_value;
-        m_hasher = rhs.m_hasher;
-        m_pred = rhs.m_pred;
-        if constexpr (std::allocator_traits<bucket_allocator_type>::propagate_on_container_copy_assignment::value) {
-            m_alloc = rhs.m_alloc;
-        }
-        // Caller is responsible for copying
-        return *this;
-    }
+    hash_tree& operator=(const hash_tree&) = delete;
 
     hash_tree& operator=(hash_tree&& rhs)
     {
-        m_key_from_value = rhs.m_key_from_value;
-        m_hasher = rhs.m_hasher;
-        m_pred = rhs.m_pred;
+        m_key_from_value = std::move(rhs.m_key_from_value);
+        m_hasher = std::move(rhs.m_hasher);
+        m_pred = std::move(rhs.m_pred);
 
-        clear();
-        if constexpr (std::allocator_traits<bucket_allocator_type>::propagate_on_container_move_assignment::value) {
-            m_alloc = rhs.m_alloc;
-            m_buckets = std::move(rhs.m_buckets);
-            m_begin = rhs.m_begin;
-        } else {
-            if (m_alloc != rhs.m_alloc) {
-                // Do nothing. Caller is responsible for moving.
-            } else {
-                m_buckets = std::move(rhs.m_buckets);
-                m_begin = rhs.m_begin;
-            }
-        }
-
-        rhs.clear();
+        m_begin = rhs.m_begin;
+        m_buckets = rhs.m_buckets;
+        rhs.m_begin = nullptr;
+        rhs.m_buckets = {};
         return *this;
     }
 
-    hash_tree(hash_tree&& rhs) noexcept : m_alloc{std::move(rhs.m_alloc)}, m_buckets{std::move(rhs.m_buckets), m_alloc}, m_begin{rhs.m_begin}, m_key_from_value{std::move(rhs.m_key_from_value)}, m_hasher{std::move(rhs.m_hasher)}, m_pred{std::move(rhs.m_pred)}
+    hash_tree(hash_tree&& rhs) noexcept : m_buckets{rhs.m_buckets}, m_begin{rhs.m_begin}, m_key_from_value{std::move(rhs.m_key_from_value)}, m_hasher{std::move(rhs.m_hasher)}, m_pred{std::move(rhs.m_pred)}
     {
-        rhs.clear();
+        rhs.m_begin = nullptr;
+        rhs.m_buckets = {};
     }
 
     void remove_node(const node_type* node)
@@ -237,7 +220,10 @@ public:
             if (cache.m_prev) {
                 const_cast<node_type*>(cache.m_prev)->set_next_hashptr(node->next_hash());
             } else {
-                m_buckets[cache.m_index] = node->next_hash();
+                if (node == m_begin) {
+                    m_begin = node->next_hash();
+                }
+                m_buckets[cache.m_index] = bucket_next_node(node, cache.m_index, m_buckets.size());
             }
             return true;
         }
@@ -267,6 +253,10 @@ public:
         verify_tree();
     }
 
+    insert_hints set_hint(const node_type* hint)
+    {
+        return {0, const_cast<node_type*>(hint)};
+    }
 
     template <typename CompatibleKey>
     const node_type* find_key(const CompatibleKey& hash_key) const
@@ -486,7 +476,9 @@ public:
 
     void clear() noexcept
     {
-        m_buckets.clear();
+        for(auto& bucket : m_buckets) {
+            bucket = nullptr;
+        }
         m_begin = nullptr;
     }
 
@@ -497,11 +489,7 @@ public:
         swap(m_hasher, rhs.m_hasher);
         swap(m_pred, rhs.m_pred);
         swap(m_begin, rhs.m_begin);
-        if constexpr(std::allocator_traits<bucket_allocator_type>::propagate_on_container_swap::value)
-        {
-            swap(m_alloc, rhs.m_alloc);
-        }
-        m_buckets.swap(rhs.m_buckets);
+        swap(m_buckets, rhs.m_buckets);
     }
 
     key_from_value_type key_extractor() const
@@ -555,17 +543,22 @@ public:
         return hash_to_bucket(hash, bucket_count);
     }
 
-    void set_buckets(hash_buckets&& new_buckets)
+    void set_buckets(hash_buckets new_buckets)
     {
-        m_buckets = std::move(new_buckets);
-        m_begin = nullptr;
+        m_buckets = new_buckets;
     }
-
-    void rehash(size_type new_bucket_count)
+/*
+    hash_tree clone(hash_buckets new_buckets)
     {
-        verify_tree();
+        hash_tree ret(m_key_from_value, m_hasher, m_pred);
+    }
+*/
+    void rehash(hash_buckets new_buckets)
+    {
+        //verify_tree();
         node_type* cur_node = m_begin;
-        m_buckets.resize(new_bucket_count);
+        m_buckets = new_buckets;
+        size_type new_bucket_count = new_buckets.size();
         while (cur_node) {
             node_type* next_node = cur_node->next_hash();
             const size_t index = hash_to_bucket(cur_node->hash(), new_bucket_count);
@@ -608,6 +601,17 @@ public:
         }
         m_begin = new_begin;
         verify_tree();
+    }
+
+    void reset(hash_buckets new_buckets)
+    {
+        m_buckets = new_buckets;
+        for(node_type* bucket : new_buckets) {
+            if(bucket) {
+                m_begin = bucket;
+                break;
+            }
+        }
     }
 
     hasher_type hash_function() const

@@ -373,29 +373,66 @@ public:
         insert_node(node, hints);
     }
 
-    template <typename CompatibleKey>
-    node_type* preinsert_node(const node_type*, const CompatibleKey& val, insert_hints& hints) const
+    bool can_insert_before(const node_type* position, const key_type& key1) const
     {
+        if (!position) {
+            return true;
+        }
+        const key_type& key2 = m_key_from_value(position->value());
+        if constexpr(unique_keys()) {
+            return m_comparator(key1, key2);
+        } else {
+            return !m_comparator(key2, key1);
+        }
+    }
+
+    bool can_insert_after(const node_type* position, const key_type& key1) const
+    {
+        const key_type& key2 = m_key_from_value(position->value());
+        if constexpr(unique_keys()) {
+            return m_comparator(key2, key1);
+        } else {
+            return !m_comparator(key1, key2);
+        }
+    }
+
+    node_type* preinsert_unique(const key_type& key, insert_hints& hints) const
+    {
+        static_assert(unique_keys());
         node_type* parent = nullptr;
         node_type* curr = m_root;
-        const auto& key = m_key_from_value(val);
 
         bool inserted_left = false;
         while (curr != nullptr) {
             parent = curr;
             const auto& curr_key = m_key_from_value(curr->value());
-            if constexpr (unique_keys()) {
-                if (m_comparator(key, curr_key)) {
-                    curr = curr->left();
-                    inserted_left = true;
-                } else if (m_comparator(curr_key, key)) {
-                    curr = curr->right();
-                    inserted_left = false;
-                } else {
-                    return curr;
-                }
+            if (m_comparator(key, curr_key)) {
+                curr = curr->left();
+                inserted_left = true;
+            } else if (m_comparator(curr_key, key)) {
+                curr = curr->right();
+                inserted_left = false;
             } else {
-                if (m_comparator(key, curr_key)) {
+                return curr;
+            }
+        }
+        hints.m_inserted_left = inserted_left;
+        hints.m_parent = parent;
+        return nullptr;
+    }
+
+    node_type* preinsert_lower_bound(const key_type& key, insert_hints& hints) const
+    {
+        if constexpr(unique_keys()) {
+            return preinsert_unique(key, hints);
+        } else {
+            node_type* parent = nullptr;
+            node_type* curr = m_root;
+
+            bool inserted_left = false;
+            while (curr != nullptr) {
+                parent = curr;
+                if(can_insert_before(curr, key)) {
                     curr = curr->left();
                     inserted_left = true;
                 } else {
@@ -403,10 +440,73 @@ public:
                     inserted_left = false;
                 }
             }
+            hints.m_inserted_left = inserted_left;
+            hints.m_parent = parent;
+            return nullptr;
         }
-        hints.m_inserted_left = inserted_left;
-        hints.m_parent = parent;
-        return nullptr;
+    }
+
+    node_type* preinsert_upper_bound(const key_type& key, insert_hints& hints) const
+    {
+        if constexpr(unique_keys()) {
+            return preinsert_unique(key, hints);
+        } else {
+            node_type* parent = nullptr;
+            node_type* curr = m_root;
+
+            bool inserted_left = false;
+            while (curr != nullptr) {
+                parent = curr;
+                if(can_insert_after(curr, key)) {
+                    curr = curr->right();
+                    inserted_left = false;
+                } else {
+                    curr = curr->left();
+                    inserted_left = true;
+                }
+            }
+            hints.m_inserted_left = inserted_left;
+            hints.m_parent = parent;
+            return nullptr;
+        }
+    }
+
+    template <typename CompatibleKey>
+    node_type* preinsert_node_hint(const node_type* supplied_hint, const CompatibleKey& val, insert_hints& hints) const
+    {
+        if(m_root == nullptr) {
+            hints.m_inserted_left = false;
+            hints.m_parent = nullptr;
+            return nullptr;
+        }
+        const auto& key = m_key_from_value(val);
+        if(can_insert_before(supplied_hint, key)) {
+            const node_type* prev = (supplied_hint == nullptr) ? tree_max(m_root) : tree_prev(supplied_hint);
+            if (!prev || can_insert_after(prev, key)) {
+                if (supplied_hint && !supplied_hint->left()) {
+                    hints.m_parent = const_cast<node_type*>(supplied_hint);
+                    hints.m_inserted_left = true;
+                    return nullptr;
+                } else {
+                    hints.m_parent = const_cast<node_type*>(prev);
+                    hints.m_inserted_left = false;
+                    return nullptr;
+                }
+            }
+            return preinsert_upper_bound(key, hints);
+        }
+        return preinsert_lower_bound(key, hints);
+    }
+
+    template <typename CompatibleKey>
+    node_type* preinsert_node(const CompatibleKey& val, insert_hints& hints) const
+    {
+        const auto& key = m_key_from_value(val);
+        if constexpr(unique_keys()) {
+            return preinsert_unique(key, hints);
+        } else {
+            return preinsert_upper_bound(key, hints);
+        }
     }
 
     void insert_node(node_type* node, const insert_hints& hints)
@@ -468,7 +568,7 @@ public:
     {
         m_root = nullptr;
     }
- 
+
     class iterator
     {
         const node_type* m_node{};
@@ -726,6 +826,11 @@ public:
             ++ret;
         }
         return ret;
+    }
+
+    key_from_value_type key_extractor() const
+    {
+        return m_key_from_value;
     }
 
     key_compare_type key_comp() const

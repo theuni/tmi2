@@ -17,13 +17,13 @@ namespace tmi
 
 template <class Key, bool Unique, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>>
 class unordered_set_base;
-
+/*
 template <class Key, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>>
 using unordered_set = unordered_set_base<Key, true, Hash, KeyEqual, Allocator>;
 
 template <class Key, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>>
 using unordered_multiset = unordered_set_base<Key, false, Hash, KeyEqual, Allocator>;
-
+*/
 namespace detail
 {
 template <typename Key>
@@ -86,6 +86,8 @@ class unordered_set_base
     using bucket_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<data_type*>;
     using node_pointer = std::allocator_traits<node_allocator_type>::pointer;
     using insert_hints_type = hash_table_type::insert_hints;
+    using buckets_type = bucket_list<data_type, Allocator>;
+    //using buckets_type = std::vector<data_type*, Allocator>;
     template <class, bool, class, class, class>
     friend class unordered_set_base;
 
@@ -204,11 +206,11 @@ class unordered_set_base
     };
 */
 public:
+    using allocator_type = Allocator;
     using key_type = hash_table_type::key_type;
     using value_type = hash_table_type::value_type;
     using hasher = hash_table_type::hasher_type;
     using key_equal = hash_table_type::key_equal_type;
-    using allocator_type = hash_table_type::allocator_type;
     using reference = hash_table_type::reference;
     using const_reference = hash_table_type::const_reference;
     using size_type = hash_table_type::size_type;
@@ -227,15 +229,12 @@ public:
 
     static_assert(std::is_same_v<value_type, typename allocator_type::value_type>);
 
-    unordered_set_base() : m_alloc{}, m_hash_table(m_alloc)
+    unordered_set_base() : m_alloc{}, m_buckets{m_alloc}
     {
     }
 
-    explicit unordered_set_base(size_type n, const hasher& hf = hasher(), const key_equal& eql = key_equal(), const allocator_type& a = allocator_type()) : m_alloc{a}, m_hash_table{m_alloc, identity<Key>{}, hf, eql}
+    explicit unordered_set_base(size_type n, const hasher& hf = hasher(), const key_equal& eql = key_equal(), const allocator_type& a = allocator_type()) : m_alloc{a}, m_buckets(hash_table_type::increase_bucket_count(0, n), m_alloc), m_hash_table{m_buckets, identity<Key>{}, hf, eql}
     {
-        if (n) {
-            m_hash_table.rehash(n);
-        }
     }
 
     template <class InputIterator>
@@ -244,13 +243,12 @@ public:
         insert(f, l);
     }
 
-    explicit unordered_set_base(const allocator_type& a) : m_alloc{a}, m_hash_table(m_alloc)
+    explicit unordered_set_base(const allocator_type& a) : unordered_set_base{0, a}
     {
     }
 
-    unordered_set_base(const unordered_set_base& u) : m_alloc{std::allocator_traits<allocator_type>::select_on_container_copy_construction(u.m_alloc)}, m_max_load_factor{u.m_max_load_factor}, m_hash_table(m_alloc, identity<Key>{}, u.hash_function(), u.key_eq())
+    unordered_set_base(const unordered_set_base& u) : m_alloc{std::allocator_traits<allocator_type>::select_on_container_copy_construction(u.m_alloc)}, m_max_load_factor{u.m_max_load_factor}, m_buckets(u.bucket_count(), m_alloc), m_hash_table(u.m_hash_table, m_buckets)
     {
-        m_hash_table.rehash(u.bucket_count());
         insert(u.begin(), u.end());
     }
 
@@ -259,25 +257,29 @@ public:
         insert(u.begin(), u.end());
     }
 
-    unordered_set_base(unordered_set_base&& u) : m_alloc{std::move(u.m_alloc)}, m_size(u.m_size), m_max_load_factor{u.m_max_load_factor}, m_hash_table{std::move(u.m_hash_table)}
+    unordered_set_base(unordered_set_base&& u) : m_alloc{std::move(u.m_alloc)}, m_size(u.m_size), m_max_load_factor{u.m_max_load_factor}, m_buckets{std::move(u.m_buckets)}, m_hash_table{std::move(u.m_hash_table)}
     {
-        u.clear();
+        u.m_size = 0;
+        u.m_hash_table.clear();
     }
 
-    unordered_set_base(unordered_set_base&& s, const Allocator& a) : m_alloc(a), m_size(0), m_max_load_factor{s.m_max_load_factor}, m_hash_table{a, identity<Key>{}, s.hash_function(), s.key_eq()}
+    unordered_set_base(unordered_set_base&& s, const Allocator& a) : m_alloc(a), m_size(0), m_max_load_factor{s.m_max_load_factor}, m_buckets{m_alloc}
     {
         if (a != s.get_allocator()) {
-            m_hash_table.rehash(s.bucket_count());
             auto first = s.begin();
             auto last = s.end();
+            m_buckets = buckets_type(s.bucket_count(), m_alloc);
+            m_hash_table = hash_table_type(std::move(s.m_hash_table), m_buckets);
             for(auto it = first; it != last; ++it) {
                 emplace_impl(std::move(*it));
             }
+            s.clear();
         } else {
             m_size = s.m_size;
+            m_buckets = std::move(s.m_buckets);
             m_hash_table = std::move(s.m_hash_table);
+            s.m_size = 0;
         }
-        s.clear();
     }
 
     unordered_set_base(std::initializer_list<value_type> il, size_type n = 0, const hasher& hf = hasher(), const key_equal& eql = key_equal(), const allocator_type& a = allocator_type()) : unordered_set_base(n, hf, eql, a)
@@ -322,13 +324,15 @@ public:
             return *this;
 
         clear();
-        m_max_load_factor = s.max_load_factor();
         if constexpr (std::allocator_traits<allocator_type>::propagate_on_container_copy_assignment::value) {
-            m_alloc = s.m_alloc;
+            if (m_alloc != s.m_alloc) {
+                m_buckets.clear();
+                m_alloc = s.m_alloc;
+            }
         }
-        size_type bucket_count = s.bucket_count();
-        m_hash_table = s.m_hash_table;
-        m_hash_table.rehash(bucket_count);
+        m_max_load_factor = s.max_load_factor();
+        m_buckets = buckets_type(s.bucket_count(), m_alloc);
+        m_hash_table = hash_table_type(s.m_hash_table, m_buckets);
         insert(s.begin(), s.end());
         return *this;
     }
@@ -343,54 +347,35 @@ public:
         m_max_load_factor = s.max_load_factor();
 
         if constexpr (std::allocator_traits<allocator_type>::propagate_on_container_move_assignment::value) {
+            m_buckets = std::move(s.m_buckets);
             m_hash_table = std::move(s.m_hash_table);
             m_alloc = s.m_alloc;
             m_size = s.m_size;
+            s.m_size = 0;
         } else {
             if (m_alloc != s.m_alloc) {
                 auto begin_it = s.begin();
                 auto end_it = s.end();
-                size_type bucket_count = s.bucket_count();
-                s.m_hash_table.clear();
-                m_hash_table = std::move(s.m_hash_table);
-                m_hash_table.rehash(bucket_count);
+                m_buckets = buckets_type(s.bucket_count(), m_alloc);
+                m_hash_table = hash_table_type(std::move(s.m_hash_table), m_buckets);
                 for(auto it = begin_it; it != end_it; ++it) {
-                    emplace_impl(std::move(*it));
-                }
-            } else {
-                m_hash_table = std::move(s.m_hash_table);
-                m_size = s.m_size;
-            }
-        }
-        s.clear();
-        //s.m_size = 0;
-        /*
-        m_bucket_list = std::move(s.m_bucket_list);
-        if constexpr (std::allocator_traits<allocator_type>::propagate_on_container_move_assignment::value) {
-            m_alloc = s.m_alloc;
-            m_hash_table = std::move(s.m_hash_table);
-            m_size = s.m_size;
-        } else {
-            if (m_alloc != s.m_alloc) {
-                //m_hash_table = hash_table_type(m_bucket_list, identity<Key>{}, s.hash_function(), s.key_eq());
-                m_hash_table.set_buckets(std::move(m_bucket_list));
-                for(auto it = s.begin(); it != s.end(); ++it) {
                     emplace_impl(std::move(*it));
                 }
                 s.clear();
             } else {
+                m_buckets = std::move(s.m_buckets);
                 m_hash_table = std::move(s.m_hash_table);
                 m_size = s.m_size;
+                s.m_size = 0;
             }
         }
- */
         return *this;
     }
 
     unordered_set_base & operator=(std::initializer_list<value_type> il)
     {
         clear();
-        m_hash_table.rehash(il.size());
+        rehash_impl(il.size());
         insert(il.begin(), il.end());
         return *this;
     }
@@ -687,6 +672,8 @@ public:
         m_hash_table.swap(s.m_hash_table);
         std::swap(m_size, s.m_size);
         std::swap(m_max_load_factor, s.m_max_load_factor);
+        //std::swap(m_buckets, s.m_buckets);
+        m_buckets.swap(s.m_buckets);
     }
 
     [[nodiscard]] allocator_type get_allocator() const noexcept
@@ -820,7 +807,9 @@ private:
     allocator_type m_alloc;
     size_type m_size{0};
     float m_max_load_factor{1.0f};
+    buckets_type m_buckets;
     hash_table_type m_hash_table;
+    //std::vector<data_type*, bucket_allocator_type> m_buckets;
 
     template<class S2>
     void merge_impl(S2&& source)
@@ -881,9 +870,10 @@ private:
 
     void rehash_impl(size_type to)
     {
-        size_type new_bucket_count = m_hash_table.increase_bucket_count(bucket_count(), to);
+        size_type new_bucket_count = hash_table_type::increase_bucket_count(bucket_count(), to);
         if (new_bucket_count > bucket_count()) {
-            m_hash_table.rehash(new_bucket_count);
+            m_buckets = buckets_type(new_bucket_count, m_alloc);
+            m_hash_table.rehash(m_buckets);
         }
     }
 

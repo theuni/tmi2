@@ -14,49 +14,33 @@
 
 namespace tmi {
 
-template <typename T, typename Indices, int I>
+template <typename T, typename Tuples, int I>
 class tmi_indexed_node;
 
-template <typename T, typename Indices, int I>
+template <typename T, typename Tuples, int I>
 class tmi_indexed_comparator_node;
 
-template <typename T, typename Indices, int I>
+template <typename T, typename Tuples, int I>
 class tmi_indexed_hash_node;
 
+template <typename T, typename Tuples>
+class tminode;
+
 template <typename T, typename Indices>
-class tminode
+struct tminode_helper
 {
-private:
-    // m_val MUST BE first
-    union {
-        T m_val;
-    };
-
-    tminode* m_prev{nullptr};
-    tminode* m_next{nullptr};
-    struct rb {
-        tminode* m_left{nullptr};
-        tminode* m_right{nullptr};
-        uintptr_t par_and_flg{};
-    };
-    struct hash_type {
-        tminode* m_nexthash{nullptr};
-        size_t m_hash{0};
-    };
-
-    template <int I>
-    using comparator_indexed_node_type = tmi_indexed_comparator_node<T, Indices, I>;
-
-    template <int I>
-    using hash_indexed_node_type = tmi_indexed_hash_node<T, Indices, I>;
+    template <int>
+    struct rb;
+    template <int>
+    struct hash_type;
 
     using index_types = typename Indices::index_types;
+
     template <int I>
     struct base_index_type_helper
     {
         using index_type = std::tuple_element_t<I, index_types>;
-        using data_type = std::conditional_t<std::is_base_of_v<detail::hashed_type, index_type>, hash_type, rb>;
-        using indexed_node_type = std::conditional_t<std::is_base_of_v<detail::hashed_type, index_type>, hash_indexed_node_type<I>, comparator_indexed_node_type<I>>;
+        using data_type = std::conditional_t<std::is_base_of_v<detail::hashed_type, index_type>, hash_type<I>, rb<I>>;
     };
 
     template <typename>
@@ -68,8 +52,38 @@ private:
     static constexpr size_t num_indices = std::tuple_size<index_types>();
     using data_types_tuple = typename base_index_helper<std::make_index_sequence<num_indices>>::data_types;
 
-    data_types_tuple m_data;
+    template <int I>
+    struct rb {
+        using indexed_node_type = tmi_indexed_comparator_node<T, data_types_tuple, I>;
+        indexed_node_type* m_left{nullptr};
+        indexed_node_type* m_right{nullptr};
+        uintptr_t par_and_flg{};
+    };
 
+    template <int I>
+    struct hash_type {
+        using indexed_node_type = tmi_indexed_hash_node<T, data_types_tuple, I>;
+        indexed_node_type* m_nexthash{nullptr};
+        size_t m_hash{0};
+    };
+
+    template <int I>
+    using indexed_node_type = typename std::tuple_element_t<I, data_types_tuple>::indexed_node_type;
+};
+
+template <typename T, typename Tuples>
+class tminode
+{
+private:
+    // m_val MUST BE first
+    union {
+        T m_val;
+    };
+
+    tminode* m_prev{nullptr};
+    tminode* m_next{nullptr};
+
+    Tuples m_data;
 public:
     template <typename, typename, int>
     friend class tmi_indexed_comparator_node;
@@ -77,17 +91,13 @@ public:
     template <typename, typename, int>
     friend class tmi_indexed_hash_node;
 
-    template <int I>
-    using indexed_node_type = base_index_type_helper<I>::indexed_node_type;
-
     using value_type = T;
 
     ~tminode()
     {
     }
 
-    template <typename... Args>
-    tminode(Args&&... args) : m_val(std::forward<Args>(args)...)
+    tminode() noexcept
     {
     }
 
@@ -116,23 +126,25 @@ public:
     }
 };
 
-template <typename T, typename Indices, int I>
-class tmi_indexed_hash_node : private tminode<T, Indices>
+template <typename T, typename Tuples, int I>
+class tmi_indexed_hash_node : private tminode<T, Tuples>
 {
     tmi_indexed_hash_node() = delete;
-    using tminode<T, Indices>::m_data;
+    using tminode<T, Tuples>::m_data;
 public:
-    using typename tminode<T, Indices>::value_type;
-    using tminode<T, Indices>::value;
+    using tuples_type = Tuples;
+    using typename tminode<T, tuples_type>::value_type;
+    using tminode<T, tuples_type>::value;
+    static constexpr int index = I;
 
     const tmi_indexed_hash_node* next_hash() const
     {
-        return static_cast<const tmi_indexed_hash_node*>(std::get<I>(m_data).m_nexthash);
+        return const_cast<const tmi_indexed_hash_node*>(std::get<I>(m_data).m_nexthash);
     }
 
     tmi_indexed_hash_node* next_hash()
     {
-        return static_cast<tmi_indexed_hash_node*>(std::get<I>(m_data).m_nexthash);
+        return std::get<I>(m_data).m_nexthash;
     }
 
     size_t hash() const
@@ -165,15 +177,17 @@ public:
     }
 };
 
-template <typename T, typename Indices, int I>
-class tmi_indexed_comparator_node : private tminode<T, Indices>
+template <typename T, typename Tuples, int I>
+class tmi_indexed_comparator_node : private tminode<T, Tuples>
 {
     tmi_indexed_comparator_node() = delete;
-    using tminode<T, Indices>::m_data;
+    using tminode<T, Tuples>::m_data;
 public:
 
-    using typename tminode<T, Indices>::value_type;
-    using tminode<T, Indices>::value;
+    using tuples_type = Tuples;
+    using typename tminode<T, tuples_type>::value_type;
+    using tminode<T, tuples_type>::value;
+    static constexpr int index = I;
 
     const tmi_indexed_comparator_node* parent() const
     {
@@ -208,22 +222,22 @@ public:
 
     const tmi_indexed_comparator_node* left() const
     {
-        return static_cast<const tmi_indexed_comparator_node*>(std::get<I>(m_data).m_left);
+        return const_cast<const tmi_indexed_comparator_node*>(std::get<I>(m_data).m_left);
     }
 
     const tmi_indexed_comparator_node* right() const
     {
-        return static_cast<const tmi_indexed_comparator_node*>(std::get<I>(m_data).m_right);
+        return const_cast<const tmi_indexed_comparator_node*>(std::get<I>(m_data).m_right);
     }
 
     tmi_indexed_comparator_node* left()
     {
-        return static_cast<tmi_indexed_comparator_node*>(std::get<I>(m_data).m_left);
+        return std::get<I>(m_data).m_left;
     }
 
     tmi_indexed_comparator_node* right()
     {
-        return static_cast<tmi_indexed_comparator_node*>(std::get<I>(m_data).m_right);
+        return std::get<I>(m_data).m_right;
     }
 
     void set_right(const tmi_indexed_comparator_node* node)

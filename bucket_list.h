@@ -9,13 +9,13 @@
 #include <algorithm>
 
 #include <cassert>
-//#include <cstdint>
 
 namespace tmi
 {
     template <typename Node, typename Allocator>
     class bucket_list
     {
+    public:
         using allocator_type = Allocator;
         using bucket_allocator_type = typename std::allocator_traits<allocator_type>::template rebind_alloc<Node*>;
         using bucket_pointer_type = std::allocator_traits<bucket_allocator_type>::pointer;
@@ -23,9 +23,10 @@ namespace tmi
         using value_type = std::allocator_traits<bucket_allocator_type>::value_type;
         using difference_type = std::allocator_traits<bucket_allocator_type>::difference_type;
 
+    private:
         friend class buckets_allocator;
 
-        bucket_allocator_type& m_alloc;
+        allocator_type& m_alloc;
         bucket_pointer_type m_ptr{nullptr};
         size_type m_size{0};
 
@@ -33,7 +34,8 @@ namespace tmi
         {
             assert(!m_size);
             if (size) {
-                m_ptr = std::allocator_traits<bucket_allocator_type>::allocate(m_alloc, size);
+                bucket_allocator_type alloc{m_alloc};
+                m_ptr = std::allocator_traits<bucket_allocator_type>::allocate(alloc, size);
                 m_size = size;
                 std::uninitialized_value_construct(begin(), end());
             }
@@ -45,49 +47,49 @@ namespace tmi
         {
             clear();
         }
- 
-        bucket_list(bucket_allocator_type& alloc) noexcept : m_alloc{alloc}
+
+        bucket_list(size_type buckets, allocator_type& alloc) noexcept : m_alloc{alloc}
         {
+            allocate(buckets);
         }
 
-        bucket_list(bucket_list&& rhs, bucket_allocator_type& alloc) noexcept : m_alloc{alloc}, m_ptr{rhs.m_ptr}, m_size{rhs.m_size}
+        bucket_list(allocator_type& alloc) noexcept : m_alloc{alloc}
+        {
+        }
+        bucket_list(bucket_list&& rhs) noexcept : m_alloc{rhs.m_alloc}, m_ptr{rhs.m_ptr}, m_size{rhs.m_size}
         {
             rhs.m_size = 0;
             rhs.m_ptr = nullptr;
         }
-
         bucket_list& operator=(bucket_list&& rhs) noexcept
         {
+            clear();
             m_ptr = rhs.m_ptr;
             m_size = rhs.m_size;
             rhs.m_size = 0;
             rhs.m_ptr = nullptr;
             return *this;
         }
-        void resize(size_type new_size)
-        {
-            clear();
-            allocate(new_size);
-        }
         void clear()
         {
             if (m_size) {
+                bucket_allocator_type alloc{m_alloc};
                 std::destroy(begin(), end());
-                std::allocator_traits<bucket_allocator_type>::deallocate(m_alloc, data(), m_size);
+                std::allocator_traits<bucket_allocator_type>::deallocate(alloc, m_ptr, m_size);
                 m_size = 0;
             }
             m_ptr = nullptr;
+        }
+        void resize(size_type buckets)
+        {
+            clear();
+            allocate(buckets);
         }
         void swap(bucket_list& rhs)
         {
             std::swap(m_size, rhs.m_size);
             std::swap(m_ptr, rhs.m_ptr);
         }
-        explicit operator bool() const
-        {
-            return m_size != 0;
-        }
-
         value_type* begin() const
         {
             return std::to_address(m_ptr);
@@ -97,19 +99,9 @@ namespace tmi
             assert(m_size <= std::numeric_limits<difference_type>::max());
             return std::to_address(m_ptr + static_cast<difference_type>(m_size));
         }
-        bucket_pointer_type data() const
-        {
-            return m_ptr;
-        }
         size_type size() const
         {
             return m_size;
-        }
-
-        value_type& operator[](size_type index) const
-        {
-            assert(index <= std::numeric_limits<difference_type>::max());
-            return m_ptr[static_cast<difference_type>(index)];
         }
     };
 

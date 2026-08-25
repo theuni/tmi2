@@ -9,10 +9,10 @@ namespace tmi{
 template <typename, typename, typename>
 class multi_index_container;
 
-template <typename, bool, bool, typename, typename, typename, typename>
+template <typename, typename, bool, bool, typename, typename, typename, typename>
 class tmi_comparator;
 
-template <typename, typename, typename, typename>
+template <typename, typename, typename, bool, bool, class, class, class, typename>
 class tmi_hasher;
 
 } // namespace tmi

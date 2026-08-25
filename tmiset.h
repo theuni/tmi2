@@ -18,11 +18,13 @@ namespace tmi
 template <class Key, bool Unique, class Compare = std::less<Key>, class Allocator = std::allocator<Key>>
 class set_base;
 
+/*
 template <class Key, class Compare = std::less<Key>, class Allocator = std::allocator<Key>>
 using set = set_base<Key, true, Compare, Allocator>;
 
 template <class Key, class Compare = std::less<Key>, class Allocator = std::allocator<Key>>
 using multiset = set_base<Key, false, Compare, Allocator>;
+*/
 
 namespace detail
 {

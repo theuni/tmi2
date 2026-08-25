@@ -26,10 +26,8 @@ template <typename T, typename Indices, typename Allocator, typename Parent, int
 struct index_type_helper
 {
     using index_types = typename Indices::index_types;
-    using node_type = tminode<T, Indices>;
     using index_type = std::tuple_element_t<I, index_types>;
-    using indexed_node_type = typename node_type::template indexed_node_type<I>;
-    using hasher = tmi_hasher<indexed_node_type, index_type, Parent, Allocator>;
+    using indexed_node_type = typename tminode_helper<T, Indices>::template indexed_node_type<I>;
     static constexpr size_t num_indices = std::tuple_size<index_types>();
 
     template <typename IndexType, typename BaseType = typename IndexType::base_type>
@@ -41,13 +39,18 @@ struct index_type_helper
     template <typename IndexType>
     struct index_base_type<IndexType, detail::hashed_type>
     {
-        using type = tmi_hasher<indexed_node_type, index_type, Parent, Allocator>;
+        using key_from_value_type = typename index_type::key_from_value_type;
+        using hash = typename index_type::hasher_type;
+        using key_equal = typename index_type::pred_type;
+        static constexpr bool Unique = index_type::is_unique();
+
+        using type = tmi_hasher<T, indexed_node_type, Parent, Unique, num_indices == 1, hash, key_equal, key_from_value_type, Allocator>;
     };
 
     template <typename IndexType>
     struct index_base_type<IndexType, detail::ordered_type>
     {
-        using type = tmi_comparator<indexed_node_type, index_type::is_unique(), num_indices == 1, typename index_type::comparator, typename index_type::key_from_value_type, Parent, Allocator>;
+        using type = tmi_comparator<T, indexed_node_type, index_type::is_unique(), num_indices == 1, typename index_type::comparator, typename index_type::key_from_value_type, Parent, Allocator>;
     };
 
     using type = index_base_type<index_type>::type;
@@ -60,6 +63,16 @@ struct index_type_helper
         typename T::value_compare;
     };
 
+    template<typename T>
+    concept HasHasher = requires {
+        typename T::hasher;
+    };
+
+    struct tag_hash_unique{};
+    struct tag_hash_non_unique{};
+    struct tag_ordered_unique{};
+    struct tag_ordered_non_unique{};
+
 } // namespace detail
 
 template <typename T, typename Indices = indexed_by<ordered_unique<identity<T>>>, typename Allocator = std::allocator<T>>
@@ -69,14 +82,15 @@ public:
     using parent_type = multi_index_container<T, Indices, Allocator>;
     using allocator_type = Allocator;
     using index_types = typename Indices::index_types;
-    using node_type = tminode<T, Indices>;
-    using node_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<node_type>;
+    using tmi_node_data_tuples = tminode_helper<T, Indices>::data_types_tuple;
+    using tmi_node_type = tminode<T, tmi_node_data_tuples>;
+    using node_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<tmi_node_type>;
     using inherited_index = typename detail::index_type_helper<T, Indices, Allocator, multi_index_container<T, Indices, Allocator>, 0>::type;
     using node_pointer = std::allocator_traits<node_allocator_type>::pointer;
     using value_type = T;
 
     template <int I>
-    using indexed_node_type = node_type::template indexed_node_type<I>;
+    using indexed_node_type = tminode_helper<T, Indices>::template indexed_node_type<I>;
 
     template <typename IndexedNode>
     using node_handle = detail::node_handle<allocator_type, IndexedNode>;
@@ -144,44 +158,48 @@ public:
     template <size_t First, size_t... ints>
     struct index_tuple_helper<std::index_sequence<First, ints...>> {
         using index_types = std::tuple<inherited_index&, nth_index_t<ints> ...>;
-        using hints_types =  std::tuple<typename nth_index_t<First>::insert_hints, typename nth_index_t<ints>::insert_hints ...>;
+        using index_types_nonref = std::tuple<inherited_index, nth_index_t<ints> ...>;
+        using hints_types =  std::tuple<typename nth_index_t<First>::insert_hints_type, typename nth_index_t<ints>::insert_hints_type ...>;
         using ctor_args_types =  std::tuple<typename nth_index_t<First>::ctor_args, typename nth_index_t<ints>::ctor_args ...>;
         using premodify_cache_types = std::tuple<typename nth_index_t<First>::premodify_cache, typename nth_index_t<ints>::premodify_cache ...>;
 
-        static index_types make_index_types(parent_type& parent, const ctor_args_types& args) {
-            return std::make_tuple(std::ref(parent), std::make_from_tuple<nth_index_t<ints>>(std::tuple_cat(std::make_tuple(typename nth_index_t<ints>::ConstructionKey{}, std::ref(parent)), std::get<ints>(args)))...);
+        static index_types make_index_types(parent_type& parent, const ctor_args_types& args, Allocator& alloc) {
+            return std::make_tuple(std::ref(parent), std::make_from_tuple<nth_index_t<ints>>(std::tuple_cat(std::make_tuple(typename nth_index_t<ints>::ConstructionKey{}, std::ref(parent), std::ref(alloc)), std::get<ints>(args)))...);
         }
-        static index_types make_index_types(parent_type& parent, const index_types& rhs) {
-            return std::make_tuple(std::ref(parent), nth_index_t<ints>(parent, std::get<ints>(rhs)) ...);
+        static index_types make_index_types(parent_type& parent, const index_types& rhs, Allocator& alloc) {
+            return std::make_tuple(std::ref(parent), nth_index_t<ints>(typename nth_index_t<ints>::ConstructionKey{}, parent, alloc, std::get<ints>(rhs)) ...);
         }
-        static index_types make_index_types(parent_type& parent, index_types&& rhs) {
-            return std::make_tuple(std::ref(parent), nth_index_t<ints>(parent, std::move(std::get<ints>(rhs))) ...);
+        static index_types make_index_types(parent_type& parent, index_types&& rhs, Allocator& alloc) {
+            return std::make_tuple(std::ref(parent), nth_index_t<ints>(typename nth_index_t<ints>::ConstructionKey{}, parent, alloc, std::move(std::get<ints>(rhs))) ...);
         }
-        static index_types make_index_types(parent_type& parent) {
-            return std::make_tuple(std::ref(parent), nth_index_t<ints>(parent) ...);
+        static index_types make_index_types(parent_type& parent, Allocator& alloc) {
+            return std::make_tuple(std::ref(parent), nth_index_t<ints>(typename nth_index_t<ints>::ConstructionKey{}, parent, alloc) ...);
         }
     };
 
     using indices_tuple = typename index_tuple_helper<std::make_index_sequence<num_indices>>::index_types;
+    using indices_tuple_nonref = typename index_tuple_helper<std::make_index_sequence<num_indices>>::index_types_nonref;
     using indices_hints_tuple = typename index_tuple_helper<std::make_index_sequence<num_indices>>::hints_types;
     using indices_premodify_cache_tuple = typename index_tuple_helper<std::make_index_sequence<num_indices>>::premodify_cache_types;
     using ctor_args_list = typename index_tuple_helper<std::make_index_sequence<num_indices>>::ctor_args_types;
 
-    template <typename, typename, typename, typename>
+    template <typename, typename, typename, bool, bool, class, class, class, typename>
     friend class tmi_hasher;
 
-    template <typename, bool, bool, typename, typename, typename, typename>
+    template <typename, typename, bool, bool, typename, typename, typename, typename>
     friend class tmi_comparator;
 
-private:
-    node_type* m_begin{nullptr};
-    node_type* m_end{nullptr};
-    size_t m_size{0};
+    template <typename, typename, typename>
+    friend class multi_index_container;
 
+private:
+    tmi_node_type* m_begin{nullptr};
+    tmi_node_type* m_end{nullptr};
 
     indices_tuple m_index_instances;
 
-    [[no_unique_address]] node_allocator_type m_alloc;
+    [[no_unique_address]] allocator_type m_alloc;
+    size_t m_size{0};
 
     template <int I = 0, class Callable, typename... Args>
     static void foreach_index(Callable&& func, std::nullptr_t, Args&&... args)
@@ -227,10 +245,10 @@ private:
         }
     }
 
-    node_type* do_preinsert_value(const T& value, indices_hints_tuple& hints)
+    tmi_node_type* do_preinsert_value(const T& value, indices_hints_tuple& hints)
     {
-        node_type* conflict = nullptr;
-        get_foreach_index([&conflict, &value]<int I>(nth_index_t<I>& instance, auto& indexed_hints) TMI_CPP23_STATIC {
+        tmi_node_type* conflict = nullptr;
+        get_foreach_index([&conflict, &value]<int I>(nth_index_t<I>& instance, auto& indexed_hints) {
             auto* ret = instance.tmi_preinsert_node(value, indexed_hints);
             if (ret) {
                 conflict = node_cast(ret);
@@ -241,7 +259,27 @@ private:
         return conflict;
     }
 
-    void do_insert_node(node_type* node, const indices_hints_tuple& hints)
+    template <typename IndexedNode>
+    tmi_node_type* do_preinsert_value_hint(const IndexedNode* supplied_hint, const T& value, indices_hints_tuple& hints)
+    {
+        tmi_node_type* conflict = nullptr;
+        get_foreach_index([&conflict, &value, supplied_hint]<int I>(nth_index_t<I>& instance, auto& indexed_hints) {
+            indexed_node_type<I>* ret = nullptr;
+            if constexpr(I == IndexedNode::index) {
+                ret = instance.tmi_preinsert_node_hint(supplied_hint, value, indexed_hints);
+            } else {
+                ret = instance.tmi_preinsert_node(value, indexed_hints);
+            }
+            if (ret) {
+                conflict = node_cast(ret);
+                return false;
+            }
+            return true;
+        }, nullptr, m_index_instances, hints);
+        return conflict;
+    }
+
+    void do_insert_node(tmi_node_type* node, const indices_hints_tuple& hints)
     {
 
         foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, const auto& indexed_hints) TMI_CPP23_STATIC {
@@ -264,7 +302,7 @@ private:
     std::pair<IndexedNode*, bool> do_reinsert_node(IndexedNode* indexed)
     {
         indices_hints_tuple hints;
-        node_type* conflict = do_preinsert_value(indexed->value(), hints);
+        tmi_node_type* conflict = do_preinsert_value(indexed->value(), hints);
         if (conflict) {
             return {indexed_node_cast<IndexedNode>(conflict), false};
         }
@@ -272,7 +310,22 @@ private:
         return {indexed, true};
     }
 
-    void do_erase_cleanup(node_type* node)
+    template <typename IndexedNode, typename Index>
+    void do_merge_index(Index& source)
+    {
+        for(auto it = source.begin(); it != source.end();)
+        {
+            auto* node = source.node_from_iterator(it++);
+            indices_hints_tuple hints;
+            tmi_node_type* conflict = do_preinsert_value(node->value(), hints);
+            if (!conflict) {
+                source.m_parent.do_unlink(node);
+                do_insert_node(node_cast_other(node), hints);
+            }
+        }
+    }
+
+    void do_erase_cleanup(tmi_node_type* node)
     {
         if (node == m_end) {
             m_end = node->prev();
@@ -285,19 +338,18 @@ private:
     }
 
     template <typename... Args>
-    node_type* construct_impl(Args&&... args)
+    tmi_node_type* construct_impl(Args&&... args)
     {
-        node_allocator_type node_alloc(get_allocator());
-        node_pointer node = std::allocator_traits<node_allocator_type>::allocate(node_alloc, 1);
+        node_allocator_type alloc{m_alloc};
+        node_pointer node = std::allocator_traits<node_allocator_type>::allocate(alloc, 1);
         std::construct_at(std::to_address(node));
-        allocator_type alloc(node_alloc);
-        std::allocator_traits<allocator_type>::construct(alloc, std::addressof(node->value()), std::forward<Args>(args)...);
+        std::allocator_traits<allocator_type>::construct(m_alloc, std::addressof(node->value()), std::forward<Args>(args)...);
         return std::to_address(node);
     }
 
-    void do_destroy_node(node_type* node)
+    void do_destroy_node(tmi_node_type* node)
     {
-        node_allocator_type alloc(m_alloc);
+        node_allocator_type alloc{m_alloc};
         node_pointer ptr = std::pointer_traits<node_pointer>::pointer_to(*node);
         std::allocator_traits<node_allocator_type>::destroy(alloc, std::addressof(node->value()));
         std::destroy_at(std::to_address(ptr));
@@ -322,21 +374,45 @@ private:
     }
 
     template <typename IndexedNode, typename... Args>
-    std::pair<IndexedNode*,bool> emplace_impl(const IndexedNode*, Args&&... args)
+    std::pair<IndexedNode*,bool> emplace_impl_hint(const IndexedNode* node_hint, Args&&... args)
     {
         indices_hints_tuple hints;
         if constexpr(sizeof...(Args) == 1) {
             if constexpr(is_value_arg<Args...>()) {
-                if (node_type* conflict = do_preinsert_value(args..., hints)) {
+                if (tmi_node_type* conflict = do_preinsert_value_hint(node_hint, args..., hints)) {
                     return {indexed_node_cast<IndexedNode>(conflict), false};
                 }
-                node_type* node = construct_impl(std::forward<Args>(args)...);
+                tmi_node_type* node = construct_impl(std::forward<Args>(args)...);
                 do_insert_node(node, hints);
                 return {indexed_node_cast<IndexedNode>(node), true};
             }
         }
-        node_type* node = construct_impl(std::forward<Args>(args)...);
-        node_type* conflict = do_preinsert_value(node->value(), hints);
+        tmi_node_type* node = construct_impl(std::forward<Args>(args)...);
+        tmi_node_type* conflict = do_preinsert_value_hint(node_hint, node->value(), hints);
+        if (conflict) {
+            do_destroy_node(node);
+            return {indexed_node_cast<IndexedNode>(conflict), false};
+        }
+        do_insert_node(node, hints);
+        return {indexed_node_cast<IndexedNode>(node), true};
+    }
+
+    template <typename IndexedNode, typename... Args>
+    std::pair<IndexedNode*,bool> emplace_impl(Args&&... args)
+    {
+        indices_hints_tuple hints;
+        if constexpr(sizeof...(Args) == 1) {
+            if constexpr(is_value_arg<Args...>()) {
+                if (tmi_node_type* conflict = do_preinsert_value(args..., hints)) {
+                    return {indexed_node_cast<IndexedNode>(conflict), false};
+                }
+                tmi_node_type* node = construct_impl(std::forward<Args>(args)...);
+                do_insert_node(node, hints);
+                return {indexed_node_cast<IndexedNode>(node), true};
+            }
+        }
+        tmi_node_type* node = construct_impl(std::forward<Args>(args)...);
+        tmi_node_type* conflict = do_preinsert_value(node->value(), hints);
         if (conflict) {
             do_destroy_node(node);
             return {indexed_node_cast<IndexedNode>(conflict), false};
@@ -348,43 +424,43 @@ private:
     template <typename IndexedNode, typename... Args>
     std::pair<IndexedNode*, bool> do_emplace(Args&&... args)
     {
-        return emplace_impl<IndexedNode>(nullptr, std::forward<Args>(args)...);
+        return emplace_impl<IndexedNode>(std::forward<Args>(args)...);
     }
 
     template <typename IndexedNode, typename... Args>
-    std::pair<IndexedNode*, bool> do_emplace_hint(IndexedNode* node_hint, Args&&... args)
+    std::pair<IndexedNode*, bool> do_emplace_hint(const IndexedNode* node_hint, Args&&... args)
     {
-        return emplace_impl<IndexedNode>(node_hint, std::forward<Args>(args)...);
+        return emplace_impl_hint<IndexedNode>(node_hint, std::forward<Args>(args)...);
     }
 
     template <typename IndexedNode>
     std::pair<IndexedNode*, bool> do_insert(const T& value)
     {
-        return emplace_impl<IndexedNode>(nullptr, value);
+        return emplace_impl<IndexedNode>(value);
     }
 
     template <typename IndexedNode>
     std::pair<IndexedNode*, bool> do_insert(T&& value)
     {
-        return emplace_impl<IndexedNode>(nullptr, std::move(value));
+        return emplace_impl<IndexedNode>(std::move(value));
     }
 
     template <typename IndexedNode>
-    std::pair<IndexedNode*, bool> do_insert_hint(IndexedNode* node_hint, const T& value)
+    std::pair<IndexedNode*, bool> do_insert_hint(const IndexedNode* node_hint, const T& value)
     {
-        return emplace_impl<IndexedNode>(node_hint, value);
+        return emplace_impl_hint<IndexedNode>(node_hint, value);
     }
 
     template <typename IndexedNode>
-    std::pair<IndexedNode*, bool> do_insert_hint(IndexedNode* node_hint, T&& value)
+    std::pair<IndexedNode*, bool> do_insert_hint(const IndexedNode* node_hint, T&& value)
     {
-        return emplace_impl<IndexedNode>(node_hint, std::move(value));
+        return emplace_impl_hint<IndexedNode>(node_hint, std::move(value));
     }
 
     template <typename IndexedNode>
     void do_unlink(IndexedNode* indexed)
     {
-        node_type* node = node_cast(indexed);
+        tmi_node_type* node = node_cast(indexed);
         foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance) TMI_CPP23_STATIC {
             instance.tmi_remove_node(indexed_node);
         }, node, m_index_instances);
@@ -395,14 +471,14 @@ private:
     void do_erase(IndexedNode* indexed)
     {
         do_unlink(indexed);
-        node_type* node = node_cast(indexed);
+        tmi_node_type* node = node_cast(indexed);
         do_destroy_node(node);
     }
 
     template <typename IndexedNode, typename Callable>
     bool do_modify(IndexedNode* indexed, Callable&& func)
     {
-        node_type* node = node_cast(indexed);
+        tmi_node_type* node = node_cast(indexed);
         indices_premodify_cache_tuple index_cache;
 
         foreach_index([]<int I>(const indexed_node_type<I>* indexed_node, nth_index_t<I>& instance, auto& cache) TMI_CPP23_STATIC {
@@ -465,7 +541,7 @@ private:
         if(!indexed) {
             return {};
         }
-        node_type* node = node_cast(indexed);
+        tmi_node_type* node = node_cast(indexed);
         foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance) TMI_CPP23_STATIC {
              instance.tmi_remove_node(indexed_node);
          }, node, m_index_instances);
@@ -474,49 +550,56 @@ private:
     }
 
     template <typename IndexedNode>
-    static constexpr IndexedNode* indexed_node_cast(node_type* node)
+    static constexpr IndexedNode* indexed_node_cast(tmi_node_type* node)
     {
-        static_assert(std::is_base_of_v<node_type, IndexedNode>);
-        static_assert(sizeof(IndexedNode) - sizeof(node_type) == 0);
+        static_assert(std::is_base_of_v<tmi_node_type, IndexedNode>);
+        static_assert(sizeof(IndexedNode) - sizeof(tmi_node_type) == 0);
         return reinterpret_cast<IndexedNode*>(node);
     }
 
     template <typename IndexedNode>
-    static constexpr const IndexedNode* indexed_node_cast(const node_type* node)
+    static constexpr const IndexedNode* indexed_node_cast(const tmi_node_type* node)
     {
-        static_assert(std::is_base_of_v<node_type, IndexedNode>);
-        static_assert(sizeof(IndexedNode) - sizeof(node_type) == 0);
+        static_assert(std::is_base_of_v<tmi_node_type, IndexedNode>);
+        static_assert(sizeof(IndexedNode) - sizeof(tmi_node_type) == 0);
         return reinterpret_cast<const IndexedNode*>(node);
     }
 
     template <typename IndexedNode>
-    static constexpr node_type* node_cast(IndexedNode* node)
+    static constexpr tmi_node_type* node_cast(IndexedNode* node)
     {
-        static_assert(std::is_base_of_v<node_type, IndexedNode>);
-        static_assert(sizeof(IndexedNode) - sizeof(node_type) == 0);
-        return reinterpret_cast<node_type*>(node);
+        static_assert(std::is_base_of_v<tmi_node_type, IndexedNode>);
+        static_assert(sizeof(IndexedNode) - sizeof(tmi_node_type) == 0);
+        return reinterpret_cast<tmi_node_type*>(node);
     }
 
     template <typename IndexedNode>
-    static constexpr const node_type* node_cast(const IndexedNode* node)
+    static constexpr const tmi_node_type* node_cast(const IndexedNode* node)
     {
-        static_assert(std::is_base_of_v<node_type, IndexedNode>);
-        static_assert(sizeof(IndexedNode) - sizeof(node_type) == 0);
-        return reinterpret_cast<const node_type*>(node);
+        static_assert(std::is_base_of_v<tmi_node_type, IndexedNode>);
+        static_assert(sizeof(IndexedNode) - sizeof(tmi_node_type) == 0);
+        return reinterpret_cast<const tmi_node_type*>(node);
+    }
+
+    template <typename IndexedNode>
+    static constexpr tmi_node_type* node_cast_other(IndexedNode* node)
+    {
+        static_assert(sizeof(IndexedNode) == sizeof(tmi_node_type));
+        return reinterpret_cast<tmi_node_type*>(node);
     }
 
     template <typename IndexedNode>
     static constexpr IndexedNode* value_cast(T& elem)
     {
         static_assert(IndexedNode::value_offset() == 0);
-        return indexed_node_cast<IndexedNode>(reinterpret_cast<node_type*>(&elem));
+        return indexed_node_cast<IndexedNode>(reinterpret_cast<tmi_node_type*>(&elem));
     }
 
     template <typename IndexedNode>
     static constexpr const IndexedNode* value_cast(const T& elem)
     {
         static_assert(IndexedNode::value_offset() == 0);
-        return indexed_node_cast<const IndexedNode>(reinterpret_cast<const node_type*>(&elem));
+        return indexed_node_cast<const IndexedNode>(reinterpret_cast<const tmi_node_type*>(&elem));
     }
 
 
@@ -525,24 +608,78 @@ public:
 
     using inherited_construction_key = inherited_index::ConstructionKey;
 
-    multi_index_container()
-        noexcept(
-            std::is_nothrow_default_constructible<allocator_type>::value &&
-            std::is_nothrow_default_constructible<inherited_index>::value)
-        requires(num_indices == 1)
-        : inherited_index(inherited_construction_key{}, *this)
-        , m_index_instances(*this)
-    {}
+/* Unordered */
+    using key_type = std::conditional_t<num_indices == 1, typename inherited_index::key_type, std::void_t<>>;
 
+    template <detail::HasHasher U = inherited_index>
+    explicit multi_index_container(U::size_type size, const U::hasher& hf = typename U::hasher(), const U::key_equal& eql = typename U::key_equal(), const allocator_type& a = allocator_type()) requires(num_indices == 1)
+        : inherited_index(inherited_construction_key{}, *this, m_alloc, typename U::key_from_value{}, hf, eql)
+        , m_index_instances(*this)
+        , m_alloc(a)
+    {
+        if (size) {
+            inherited_index::rehash(size);
+        }
+    }
+
+    template <class InputIterator, detail::HasHasher U = inherited_index>
+    multi_index_container(InputIterator f, InputIterator l, U::size_type n = 0, const U::hasher& hf = typename U::hasher(), const U::key_equal& eql = typename U::key_equal(), const allocator_type& a = allocator_type()) : multi_index_container(n, hf, eql, a)
+    {
+        inherited_index::insert(f, l);
+    }
+
+    template <detail::HasHasher U = inherited_index>
+    multi_index_container(std::initializer_list<value_type> il, U::size_type n = 0, const U::hasher& hf = typename U::hasher(), const U::key_equal& eql = typename U::key_equal(), const allocator_type& a = allocator_type()) : multi_index_container(n, hf, eql, a)
+    {
+        inherited_index::insert(il);
+    }
+
+    template <detail::HasHasher U = inherited_index>
+    multi_index_container(U::size_type n, const allocator_type& a) : multi_index_container(n, typename U::hasher(), typename U::key_equal(), a)
+    {
+    }
+
+    template <detail::HasHasher U = inherited_index>
+    multi_index_container(U::size_type n, const U::hasher& hf, const allocator_type& a) : multi_index_container(n, hf, typename U::key_equal(), a)
+    {
+    }
+
+    template <class InputIterator, detail::HasHasher U = inherited_index>
+    multi_index_container(InputIterator f, InputIterator l, U::size_type n, const allocator_type& a) : multi_index_container(f, l, n, typename U::hasher(), typename U::key_equal(), a)
+    {
+    }
+
+    template <class InputIterator, detail::HasHasher U = inherited_index>
+    multi_index_container(InputIterator f, InputIterator l, U::size_type n, const U::hasher& hf,  const allocator_type& a) : multi_index_container(f, l, n, hf, typename U::key_equal(), a)
+    {
+    }
+
+    template <detail::HasHasher U = inherited_index>
+    multi_index_container(std::initializer_list<value_type> il, U::size_type n, const allocator_type& a) : multi_index_container(il, n, typename U::hasher(), typename U::key_equal(), a)
+    {
+    }
+
+    template <detail::HasHasher U = inherited_index>
+    multi_index_container(std::initializer_list<value_type> il, U::size_type n, const U::hasher& hf,  const allocator_type& a) : multi_index_container(il, n, hf, typename U::key_equal(), a)
+    {
+    }
+
+    template<class Hash2, class KeyEqual2>
+    using other_unordered_set = tmi::multi_index_container<T, tmi::indexed_by<tmi::hashed_unique<tmi::tag<detail::tag_hash_unique>, tmi::identity<T>, Hash2, KeyEqual2>>, Allocator>;
+
+    template<class Hash2, class KeyEqual2>
+    using other_unordered_multiset = tmi::multi_index_container<T, tmi::indexed_by<tmi::hashed_non_unique<tmi::tag<detail::tag_hash_non_unique>, tmi::identity<T>, Hash2, KeyEqual2>>, Allocator>;
+
+/* ordered */
     template <detail::HasValueCompare U = inherited_index>
     explicit multi_index_container(const typename U::value_compare& comp) requires(num_indices == 1)
-        : inherited_index(inherited_construction_key{}, *this, comp)
+        : inherited_index(inherited_construction_key{}, *this, m_alloc, comp)
         , m_index_instances(*this)
     {}
 
     template <detail::HasValueCompare U = inherited_index>
     multi_index_container(const typename U::value_compare& comp, const allocator_type& a) requires(num_indices == 1)
-        : inherited_index(inherited_construction_key{}, *this, comp)
+        : inherited_index(inherited_construction_key{}, *this, m_alloc, comp)
         , m_index_instances(*this)
         , m_alloc(a)
     {}
@@ -550,7 +687,7 @@ public:
     template <class InputIterator, detail::HasValueCompare U = inherited_index>
     multi_index_container(InputIterator first, InputIterator last, const typename U::value_compare& comp = typename U::value_compare()) requires(num_indices == 1) : multi_index_container(comp)
     {
-        insert(first, last);
+        inherited_index::insert(first, last);
     }
 
     template <class InputIterator, detail::HasValueCompare U = inherited_index>
@@ -559,39 +696,10 @@ public:
         inherited_index::insert(first, last);
     }
 
-    multi_index_container(const multi_index_container & s) requires(num_indices == 1) : multi_index_container(s, s.get_allocator())
+    template <class InputIterator, detail::HasValueCompare U = inherited_index>
+    multi_index_container(InputIterator first, InputIterator last, const allocator_type& a) requires(num_indices == 1) : multi_index_container(a)
     {
-    }
-
-    multi_index_container(multi_index_container && s) noexcept(std::is_nothrow_move_constructible<allocator_type>::value &&
-                          std::is_nothrow_move_constructible<typename inherited_index::key_compare>::value) requires(num_indices == 1)
-        : inherited_index(inherited_construction_key{}, *this, std::move(s))
-        , m_index_instances(*this)
-        , m_size{s.m_size}
-        , m_alloc(std::move(s.m_alloc))
-    {
-    }
-
-    explicit multi_index_container(const allocator_type& a) requires(num_indices == 1)
-        : inherited_index(*this, inherited_construction_key{})
-        , m_index_instances(*this)
-        , m_alloc(std::allocator_traits<Allocator>::select_on_container_copy_construction(a.m_alloc))
-    {
-    }
-
-    multi_index_container(const multi_index_container & s, const allocator_type& a) requires(num_indices == 1)
-        : inherited_index(inherited_construction_key{}, *this, s)
-        , m_index_instances(*this)
-        , m_alloc(a)
-    {
-        inherited_index::insert(s.begin(), s.end());
-    }
-
-    multi_index_container(multi_index_container && s, const allocator_type& a) requires(num_indices == 1)
-        : inherited_index(inherited_construction_key{}, *this, std::move(s))
-        , m_index_instances(*this)
-        , m_alloc(std::move(a))
-    {
+        inherited_index::insert(first, last);
     }
 
     template <detail::HasValueCompare U = inherited_index>
@@ -606,21 +714,64 @@ public:
         inherited_index::insert(il.begin(), il.end());
     }
 
+    template <detail::HasValueCompare U = inherited_index>
+    multi_index_container(std::initializer_list<value_type> il, const allocator_type& a) requires(num_indices == 1) : multi_index_container(a)
+    {
+        inherited_index::insert(il.begin(), il.end());
+    }
 
 
 
 
-    multi_index_container(const allocator_type& alloc = {}) requires(num_indices != 1)
-          : inherited_index(*this),
-          m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this)),
+    multi_index_container(const allocator_type& alloc = {})
+          : inherited_index(typename inherited_index::ConstructionKey{}, *this, m_alloc),
+          m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this, m_alloc)),
           m_alloc(alloc)
 
     {
     }
 
+    multi_index_container(const multi_index_container & s, const allocator_type& a)
+        : inherited_index(inherited_construction_key{}, *this, m_alloc, s)
+        , m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this, s.m_index_instances, m_alloc))
+        , m_alloc(a)
+    {
+        inherited_index::insert(s.begin(), s.end());
+    }
+
+    multi_index_container(multi_index_container && rhs, const allocator_type& a)
+        : inherited_index(inherited_construction_key{}, *this, m_alloc)
+        , m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this, m_alloc))
+        , m_alloc(a)
+    {
+        if (a != rhs.get_allocator()) {
+            auto begin_it = rhs.begin();
+            auto end_it = rhs.end();
+
+            foreach_index([]<int I>(nth_index_t<I>& to, nth_index_t<I>& from) TMI_CPP23_STATIC {
+                to.assign_release(std::move(from));
+            }, nullptr, m_index_instances, rhs.m_index_instances);
+            for(auto it = begin_it; it != end_it; ++it) {
+                indexed_node_type<0>* node = inherited_index::node_from_iterator(it);
+                do_emplace<indexed_node_type<0>>(std::move(node->value()));
+            }
+            rhs.do_clear();
+        } else {
+            foreach_index([]<int I>(nth_index_t<I>& to, nth_index_t<I>& from) TMI_CPP23_STATIC {
+                to = std::move(from);
+            }, nullptr, m_index_instances, rhs.m_index_instances);
+            m_size = rhs.m_size;
+            m_begin = rhs.m_begin;
+            m_end = rhs.m_end;
+            rhs.m_begin = nullptr;
+            rhs.m_end = nullptr;
+            rhs.m_size = 0;
+        }
+    }
+
     multi_index_container(const ctor_args_list& args, const allocator_type& alloc = {})
-        : inherited_index(std::make_from_tuple<inherited_index>(std::tuple_cat(std::make_tuple(typename inherited_index::ConstructionKey{}, std::ref(*this)), std::get<0>(args)))),
-          m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this, args)),
+        : inherited_index(std::make_from_tuple<inherited_index>(std::tuple_cat(std::make_tuple(typename inherited_index::ConstructionKey{}, std::ref(*this), std::ref(m_alloc)), std::get<0>(args)))),
+          m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this, args, m_alloc)),
           m_alloc(alloc)
     {
     }
@@ -631,42 +782,19 @@ public:
     }
 
     multi_index_container(const multi_index_container& rhs)
-        : inherited_index(*this, *static_cast<const inherited_index*>(&rhs)),
-          m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this, rhs.m_index_instances)),
+        : inherited_index(inherited_construction_key{}, *this, m_alloc, rhs),
+          m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this, rhs.m_index_instances, m_alloc)),
           m_alloc(std::allocator_traits<allocator_type>::select_on_container_copy_construction(rhs.m_alloc))
     {
         if (!rhs.m_size) {
             return;
         }
-        node_type* from_node = rhs.m_begin;
-        node_type* prev_node = nullptr;
-        node_type* to_node = nullptr;
-        m_begin = to_node;
-        for(size_t i = 0; i < rhs.m_size; i++)
-        {
-            to_node = construct_impl(from_node->value());
-            if(i == 0) {
-                m_begin = to_node;
-            }
-            to_node->link(prev_node);
-            prev_node = to_node;
-            from_node = from_node->next();
-        }
-        m_end = prev_node;
-
-        to_node = m_begin;
-        while(to_node) {
-            foreach_index([]<int I>(indexed_node_type<I>* indexed_node, nth_index_t<I>& instance) TMI_CPP23_STATIC {
-                instance.tmi_insert_node_direct(indexed_node);
-            }, to_node, m_index_instances);
-            to_node = to_node->next();
-            m_size++;
-        }
+        inherited_index::insert(rhs.begin(), rhs.end());
     }
 
     multi_index_container(multi_index_container&& rhs)
-        : inherited_index(*this, std::move(*static_cast<const inherited_index*>(&rhs))),
-          m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this, std::move(rhs.m_index_instances))),
+        : inherited_index(inherited_construction_key{}, *this, std::move(rhs)),
+          m_index_instances(index_tuple_helper<std::make_index_sequence<num_indices>>::make_index_types(*this, std::move(rhs.m_index_instances), m_alloc)),
           m_alloc(std::move(rhs.m_alloc))
     {
         m_size = rhs.m_size;
@@ -677,9 +805,70 @@ public:
         rhs.m_size = 0;
     }
 
+    multi_index_container& operator=(const multi_index_container& s)
+    {
+        if (this == std::addressof(s))
+            return *this;
+
+        do_clear();
+        if constexpr (std::allocator_traits<allocator_type>::propagate_on_container_copy_assignment::value) {
+            if (m_alloc != s.m_alloc) {
+                m_alloc = s.m_alloc;
+            }
+        }
+        foreach_index([]<int I>(nth_index_t<I>& to, const nth_index_t<I>& from) TMI_CPP23_STATIC {
+            to = from;
+        }, nullptr, m_index_instances, s.m_index_instances);
+        inherited_index::insert(s.begin(), s.end());
+        return *this;
+    }
+
+    multi_index_container& operator=(multi_index_container&& s) noexcept(std::allocator_traits<Allocator>::is_always_equal::value
+                                        && std::is_nothrow_move_assignable_v<indices_tuple_nonref>)
+    {
+
+        do_clear();
+        if constexpr (std::allocator_traits<allocator_type>::propagate_on_container_move_assignment::value) {
+            foreach_index([]<int I>(nth_index_t<I>& to, nth_index_t<I>& from) TMI_CPP23_STATIC {
+                to = std::move(from);
+            }, nullptr, m_index_instances, s.m_index_instances);
+            m_alloc = s.m_alloc;
+            m_size = s.m_size;
+            m_begin = s.m_begin;
+            m_end = s.m_end;
+            s.m_begin = nullptr;
+            s.m_end = nullptr;
+            s.m_size = 0;
+        } else {
+            if (m_alloc != s.m_alloc) {
+                auto begin_it = s.begin();
+                auto end_it = s.end();
+                foreach_index([]<int I>(nth_index_t<I>& to, nth_index_t<I>& from) TMI_CPP23_STATIC {
+                    to.assign_release(std::move(from));
+                }, nullptr, m_index_instances, s.m_index_instances);
+                for(auto it = begin_it; it != end_it; ++it) {
+                    indexed_node_type<0>* node = inherited_index::node_from_iterator(it);
+                    do_emplace<indexed_node_type<0>>(std::move(node->value()));
+                }
+                s.do_clear();
+            } else {
+                foreach_index([]<int I>(nth_index_t<I>& to, nth_index_t<I>& from) TMI_CPP23_STATIC {
+                    to = std::move(from);
+                }, nullptr, m_index_instances, s.m_index_instances);
+                m_size = s.m_size;
+                m_begin = s.m_begin;
+                m_end = s.m_end;
+                s.m_begin = nullptr;
+                s.m_end = nullptr;
+                s.m_size = 0;
+            }
+        }
+
+        return *this;
+    }
     static constexpr size_t node_size()
     {
-        return sizeof(node_type);
+        return sizeof(tmi_node_type);
     }
 
     template <int I, typename IteratorType>
@@ -754,7 +943,7 @@ public:
 
     allocator_type get_allocator() const noexcept
     {
-        return m_alloc;
+        return allocator_type(m_alloc);
     }
 
     size_t size() const noexcept
@@ -767,7 +956,7 @@ public:
         return !size();
     }
 
-    void swap(multi_index_container & s) noexcept(std::allocator_traits<Allocator>::is_always_equal::value)
+    void swap(multi_index_container & s) noexcept(std::allocator_traits<Allocator>::is_always_equal::value && std::is_nothrow_swappable_v<indices_tuple_nonref>)
     {
         if constexpr(std::allocator_traits<allocator_type>::propagate_on_container_swap::value)
         {
@@ -796,15 +985,17 @@ typename multi_index_container<T, Indices, Allocator>::size_type erase_if(multi_
     return erase_if(c.template get<0>(), std::move(pred));
 }
 
-template <typename T, typename Indices, typename Allocator, typename Predicate>
-inline bool operator==(const multi_index_container<T, Indices, Allocator>& x, const multi_index_container<T, Indices, Allocator>& y) {
-    return x.template get<0>() == y.template get<0>();
-}
+template <class Key, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>>
+using unordered_set = tmi::multi_index_container<Key, tmi::indexed_by<tmi::hashed_unique<tmi::tag<detail::tag_hash_unique>, tmi::identity<Key>, Hash, KeyEqual>>, Allocator>;
 
-template <typename T, typename Indices, typename Allocator, typename Predicate>
-inline bool operator<=>(const multi_index_container<T, Indices, Allocator>& x, const multi_index_container<T, Indices, Allocator>& y) {
-    return x.template get<0>() <=> y.template get<0>();
-}
+template <class Key, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>>
+using unordered_multiset = tmi::multi_index_container<Key, tmi::indexed_by<tmi::hashed_non_unique<tmi::tag<detail::tag_hash_non_unique>, tmi::identity<Key>, Hash, KeyEqual>>, Allocator>;
+
+template <class Key, class Compare = std::less<Key>, class Allocator = std::allocator<Key>>
+using set = tmi::multi_index_container<Key, tmi::indexed_by<tmi::ordered_unique<tmi::tag<detail::tag_ordered_unique>, tmi::identity<Key>, Compare>>, Allocator>;
+
+template <class Key, class Compare = std::less<Key>, class Allocator = std::allocator<Key>>
+using multiset = tmi::multi_index_container<Key, tmi::indexed_by<tmi::ordered_non_unique<tmi::tag<detail::tag_ordered_non_unique>, tmi::identity<Key>, Compare>>, Allocator>;
 
 } // namespace tmi
 
