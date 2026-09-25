@@ -1,8 +1,6 @@
 #ifndef TMI_STD_SET_H
 #define TMI_STD_SET_H
 
-#if 1
-//#include <tmiset.h>
 #include <tmi.h>
 namespace std
 {
@@ -12,7 +10,4 @@ namespace std
     using tmi::operator==;
     using tmi::operator<=>;
 }
-#else
-#include_next <set>
-#endif
 #endif // TMI_STD_SET_H
