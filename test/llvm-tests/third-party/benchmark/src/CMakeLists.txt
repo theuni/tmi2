@@ -24,4 +24,5 @@ set (benchmark_sources
 add_library(benchmark_lib STATIC ${benchmark_sources})
 target_include_directories(benchmark_lib SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/test/llvm-tests/third-party/benchmark/include)
 target_compile_definitions(benchmark_lib PRIVATE BENCHMARK_VERSION="v0.0.0")
+target_link_libraries(benchmark_lib PRIVATE common_interface)
 target_link_libraries(llvm_bench_interface INTERFACE benchmark_lib)
