@@ -22,9 +22,7 @@ namespace {
 struct my_type
 {
     int m_val{0};
-    my_type() = default;
     bool operator==(const my_type& rhs) const { return m_val == rhs.m_val;}
-    bool operator<(const my_type& rhs) const { return m_val < rhs.m_val;}
 };
 
 struct my_type_hasher
