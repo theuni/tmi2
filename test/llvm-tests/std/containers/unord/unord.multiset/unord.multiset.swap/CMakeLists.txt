@@ -3,6 +3,11 @@ set (unordered_multiset_swap_sources
     swap_noexcept.pass.cpp
 )
 
+set_source_files_properties(swap_noexcept.pass.cpp
+    PROPERTIES
+    COMPILE_OPTIONS "-Wno-unused-local-typedefs"
+)
+
 foreach(source_file IN LISTS unordered_multiset_swap_sources)
     cmake_path(REMOVE_EXTENSION source_file LAST_ONLY OUTPUT_VARIABLE target_name)
     string(PREPEND target_name "multiset.swap.")

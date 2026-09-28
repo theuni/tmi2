@@ -33,6 +33,11 @@ set (set_cons_compile_fail_sources
     compare_copy_constructible.compile.fail.cpp
 )
 
+set_source_files_properties(default_noexcept.pass.cpp dtor_noexcept.pass.cpp move_noexcept.pass.cpp
+    PROPERTIES
+    COMPILE_OPTIONS "-Wno-unused-local-typedefs"
+)
+
 foreach(source_file IN LISTS set_cons_compile_fail_sources)
     try_compile(result_var SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/${source_file}" NO_CACHE
         OUTPUT_VARIABLE compile_output

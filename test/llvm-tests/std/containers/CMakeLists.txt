@@ -4,7 +4,7 @@ set (container_compile_sources
 
 set_source_files_properties(iterator.rel_ops.compile.pass.cpp
     PROPERTIES
-    COMPILE_DEFINITIONS "-D_LIBCPP_DISABLE_DEPRECATION_WARNINGS"
+    COMPILE_OPTIONS "-Wno-deprecated-declarations"
 )
 
 add_library(container_compile OBJECT ${container_compile_sources})
