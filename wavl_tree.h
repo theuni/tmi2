@@ -46,6 +46,7 @@ private:
     static_assert(std::is_copy_constructible_v<key_compare_type>);
 
     node_type* m_root{nullptr};
+    node_type* m_begin{nullptr};
     [[no_unique_address]] key_from_value_type m_key_from_value;
     [[no_unique_address]] key_compare_type m_comparator;
 
@@ -291,7 +292,7 @@ private:
         if (!m_root) {
             return true;
         }
-        node_type* node = tree_min(m_root);
+        node_type* node = m_begin;
         while(node) {
             node_type* next = tree_next(node);
             if (next) {
@@ -311,6 +312,11 @@ private:
         return true;
     }
     bool verify_tree() const {
+        if (m_root) {
+            assert(m_begin == tree_min(m_root));
+        } else {
+            assert(m_begin == nullptr);
+        }
         assert(compute_rank(m_root) >= -1);
         assert(check_order());
         return true;
@@ -321,10 +327,11 @@ private:
 
 public:
     wavl_tree(key_from_value_type key_from_value, key_compare_type comparator) : m_key_from_value{std::move(key_from_value)}, m_comparator(std::move(comparator)) {}
-    wavl_tree(const wavl_tree& rhs) : m_root{nullptr}, m_key_from_value{rhs.m_key_from_value}, m_comparator{rhs.m_comparator} {}
-    wavl_tree(wavl_tree&& rhs) : m_root{rhs.m_root}, m_key_from_value{std::move(rhs.m_key_from_value)}, m_comparator{std::move(rhs.m_comparator)}
+    wavl_tree(const wavl_tree& rhs) : m_root{nullptr}, m_begin{nullptr}, m_key_from_value{rhs.m_key_from_value}, m_comparator{rhs.m_comparator} {}
+    wavl_tree(wavl_tree&& rhs) : m_root{rhs.m_root}, m_begin{rhs.m_begin}, m_key_from_value{std::move(rhs.m_key_from_value)}, m_comparator{std::move(rhs.m_comparator)}
     {
         rhs.m_root = nullptr;
+        rhs.m_begin = nullptr;
     }
     wavl_tree() = default;
 
@@ -333,6 +340,7 @@ public:
         m_key_from_value = rhs.m_key_from_value;
         m_comparator = rhs.m_comparator;
         m_root = rhs.m_root;
+        m_begin = rhs.m_begin;
         return *this;
     }
 
@@ -341,6 +349,7 @@ public:
         m_key_from_value = std::move(rhs.m_key_from_value);
         m_comparator = std::move(rhs.m_comparator);
         m_root = rhs.m_root;
+        m_begin = rhs.m_begin;
         return *this;
     }
 
@@ -349,7 +358,14 @@ public:
         if (!node) {
             return;
         }
-        tree_remove(node);
+
+        if (node == m_begin) {
+            node_type* next = tree_next(node);
+            tree_remove(node);
+            m_begin = next;
+        } else {
+            tree_remove(node);
+        }
         verify_tree();
     }
 
@@ -482,7 +498,7 @@ public:
         const auto& key = m_key_from_value(val);
         if(can_insert_before(supplied_hint, key)) {
             const node_type* prev = (supplied_hint == nullptr) ? tree_max(m_root) : tree_prev(supplied_hint);
-            if (!prev || can_insert_after(prev, key)) {
+            if (supplied_hint == m_begin || can_insert_after(prev, key)) {
                 if (supplied_hint && !supplied_hint->left()) {
                     hints.m_parent = const_cast<node_type*>(supplied_hint);
                     hints.m_inserted_left = true;
@@ -520,6 +536,9 @@ public:
             if (hints.m_inserted_left) {
                 parent->set_left(node);
                 was_leaf = !parent->right();
+                if (parent == m_begin) {
+                    m_begin = node;
+                }
             } else {
                 parent->set_right(node);
                 was_leaf = !parent->left();
@@ -530,6 +549,7 @@ public:
             }
         } else {
             m_root = node;
+            m_begin = node;
         }
         verify_tree();
     }
@@ -539,7 +559,7 @@ public:
         node_type* next_ptr = nullptr;
         node_type* prev_ptr = nullptr;
 
-        if (node != tree_min(m_root))
+        if (node != m_begin)
             prev_ptr = tree_prev(node);
         if (node != tree_max(m_root))
             next_ptr = tree_next(node);
@@ -560,6 +580,7 @@ public:
     void swap(wavl_tree& rhs) noexcept(std::is_nothrow_swappable_v<key_compare_type> && std::is_nothrow_swappable_v<key_from_value_type>)
     {
         std::swap(m_root, rhs.m_root);
+        std::swap(m_begin, rhs.m_begin);
         std::swap(m_key_from_value, rhs.m_key_from_value);
         std::swap(m_comparator, rhs.m_comparator);
     }
@@ -567,6 +588,7 @@ public:
     void release() noexcept
     {
         m_root = nullptr;
+        m_begin = nullptr;
     }
 
     class iterator
@@ -629,16 +651,12 @@ public:
 
     iterator begin() noexcept
     {
-        if (m_root == nullptr)
-            return end();
-        return make_iterator(tree_min(m_root));
+        return make_iterator(m_begin);
     }
 
     const_iterator begin() const noexcept
     {
-        if (m_root == nullptr)
-            return end();
-        return make_iterator(tree_min(m_root));
+        return make_iterator(m_begin);
     }
 
     iterator end() noexcept
