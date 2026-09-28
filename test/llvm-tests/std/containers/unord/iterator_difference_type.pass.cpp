@@ -21,28 +21,28 @@ void testUnorderedMap() {
     typedef typename Map::iterator It;
     static_assert((std::is_same<typename It::value_type, ValueTp>::value), "");
     static_assert((std::is_same<typename It::reference, ValueTp&>::value), "");
-    static_assert((std::is_same<typename It::pointer, PtrT>::value), "");
+    LIBCPP_STATIC_ASSERT((std::is_same<typename It::pointer, PtrT>::value), "");
     static_assert((std::is_same<typename It::difference_type, Diff>::value), "");
   }
   {
     typedef typename Map::const_iterator It;
     static_assert((std::is_same<typename It::value_type, ValueTp>::value), "");
     static_assert((std::is_same<typename It::reference, ValueTp const&>::value), "");
-    static_assert((std::is_same<typename It::pointer, CPtrT>::value), "");
+    LIBCPP_STATIC_ASSERT((std::is_same<typename It::pointer, CPtrT>::value), "");
     static_assert((std::is_same<typename It::difference_type, Diff>::value), "");
   }
   {
     typedef typename Map::local_iterator It;
     static_assert((std::is_same<typename It::value_type, ValueTp>::value), "");
     static_assert((std::is_same<typename It::reference, ValueTp&>::value), "");
-    static_assert((std::is_same<typename It::pointer, PtrT>::value), "");
+    LIBCPP_STATIC_ASSERT((std::is_same<typename It::pointer, PtrT>::value), "");
     static_assert((std::is_same<typename It::difference_type, Diff>::value), "");
   }
   {
     typedef typename Map::const_local_iterator It;
     static_assert((std::is_same<typename It::value_type, ValueTp>::value), "");
     static_assert((std::is_same<typename It::reference, ValueTp const&>::value), "");
-    static_assert((std::is_same<typename It::pointer, CPtrT>::value), "");
+    LIBCPP_STATIC_ASSERT((std::is_same<typename It::pointer, CPtrT>::value), "");
     static_assert((std::is_same<typename It::difference_type, Diff>::value), "");
   }
 }
