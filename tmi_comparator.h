@@ -180,44 +180,6 @@ private:
     {
         m_parent.do_unlink(node);
     }
-/*
-    template<class S2>
-    void merge_impl(S2&& source)
-    {
-        for(auto it = source.begin(); it != source.end();)
-        {
-            data_type* node = source.node_from_iterator(it++);
-            const auto& [_, inserted] = m_parent.do_reinsert_node(node);
-            if (inserted) {
-                source.unlink_node(node);
-            }
-        }
-    }
-*/
-    template <class... Args>
-    std::pair<data_type*,bool> emplace_impl(const data_type* node_hint, Args&&... args)
-    {
-        insert_hints_type hints;
-        if constexpr(sizeof...(Args) == 1) {
-            if constexpr(is_value_arg<Args...>()) {
-            data_type* conflict = tree_type::preinsert_node(node_hint, args..., hints);
-            if (conflict) {
-                return {conflict, false};
-            }
-            data_type* node = construct_impl(std::forward<Args>(args)...);
-            insert_impl(node, hints);
-            return {node, true};
-        }
-        }
-        data_type* node = construct_impl(std::forward<Args>(args)...);
-        data_type* conflict = tree_type::preinsert_node(node_hint, node->value(), hints);
-        if(conflict) {
-            destroy_impl(node);
-            return {conflict, false};
-        }
-        insert_impl(node, hints);
-        return {node, true};
-    }
 
     const data_type* node_from_iterator(const_iterator it) const
     {

@@ -223,7 +223,6 @@ public:
     using const_local_iterator = hash_table_type::const_local_iterator;
 
     using node_type = tmi::detail::node_handle<allocator_type, data_type>;
-    using bucket_list = hash_table_type::bucket_list_type;
     using insert_return_type = std::conditional_t<Unique, tmi::detail::insert_return_type<iterator, node_type>, iterator>;
     using insert_result_type = std::conditional_t<Unique, std::pair<iterator, bool>, iterator>;
 
