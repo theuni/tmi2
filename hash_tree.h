@@ -71,7 +71,10 @@ public:
     }
 
 
-    hash_tree() noexcept {}
+    hash_tree() noexcept(std::is_nothrow_default_constructible<hasher_type>::value &&
+                         std::is_nothrow_default_constructible<key_from_value_type>::value &&
+                         std::is_nothrow_default_constructible<key_equal_type>::value)
+    {}
 
     hash_tree(key_from_value_type key_from_value ,hasher_type hasher, key_equal_type key_equal) : m_key_from_value(key_from_value), m_hasher(hasher), m_pred(key_equal){}
     hash_tree(hash_buckets buckets, key_from_value_type key_from_value = key_from_value_type{}, hasher_type hasher = hasher_type{}, key_equal_type key_equal = key_equal_type{}) : m_buckets{buckets}, m_key_from_value(key_from_value), m_hasher(hasher), m_pred(key_equal){}
@@ -89,7 +92,9 @@ public:
     hash_tree(const hash_tree& rhs) = delete;
     hash_tree& operator=(const hash_tree&) = delete;
 
-    hash_tree& operator=(hash_tree&& rhs)
+    hash_tree& operator=(hash_tree&& rhs) noexcept(std::is_nothrow_move_assignable<key_equal_type>::value &&
+                                                   std::is_nothrow_move_assignable<key_from_value_type>::value &&
+                                                   std::is_nothrow_move_assignable<hasher_type>::value)
     {
         m_key_from_value = std::move(rhs.m_key_from_value);
         m_hasher = std::move(rhs.m_hasher);
@@ -102,7 +107,10 @@ public:
         return *this;
     }
 
-    hash_tree(hash_tree&& rhs) noexcept : m_buckets{rhs.m_buckets}, m_begin{rhs.m_begin}, m_key_from_value{std::move(rhs.m_key_from_value)}, m_hasher{std::move(rhs.m_hasher)}, m_pred{std::move(rhs.m_pred)}
+    hash_tree(hash_tree&& rhs) noexcept(std::is_nothrow_move_constructible<hasher_type>::value &&
+                                        std::is_nothrow_move_constructible<key_from_value_type>::value &&
+                                        std::is_nothrow_move_constructible<key_equal_type>::value)
+    : m_buckets{rhs.m_buckets}, m_begin{rhs.m_begin}, m_key_from_value{std::move(rhs.m_key_from_value)}, m_hasher{std::move(rhs.m_hasher)}, m_pred{std::move(rhs.m_pred)}
     {
         rhs.m_begin = nullptr;
         rhs.m_buckets = {};
