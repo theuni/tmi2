@@ -517,6 +517,18 @@ hf, eql}
         return m_parent.do_modify(node, std::forward<Callable>(func));
     }
 
+    const_iterator iterator_to(const value_type& entry) const
+    {
+        const data_type* node = Parent::template value_cast<data_type>(entry);
+        return m_hash_table.make_iterator(node);
+    }
+
+    iterator iterator_to(const value_type& entry)
+    {
+        data_type* node = Parent::template value_cast<data_type>(const_cast<value_type&>(entry));
+        return m_hash_table.make_iterator(node);
+    }
+
 private:
 
     Parent& m_parent;
@@ -601,6 +613,11 @@ private:
         m_hash_table.clear();
         m_buckets.clear();
         m_hash_table.rehash(m_buckets);
+    }
+
+    const_iterator make_iterator(const data_type* node) const
+    {
+        return m_hash_table.make_iterator(node);
     }
 };
 
